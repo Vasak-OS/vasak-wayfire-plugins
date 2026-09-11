@@ -65,6 +65,27 @@ int main()
             && vasak::gravedad_de(par[1]) != Gravedad::NINGUNA, par[1]);
     }
 
+    std::printf("\nSe cubre todo lo que security-context-v1 oculta\n");
+    // Copia de `privileged_protocols` de
+    // `vasak-desktop-settings/etc/skel/.config/wayfire.ini`. Son dos listas de
+    // lo mismo en dos repositorios: si allá se oculta un protocolo y acá no se
+    // anota, la semana de medición no ve quién lo pide y la lista de permitidos
+    // se decide sin ese dato. Esta prueba no puede leer el otro repositorio,
+    // así que al menos avisa cuando esta lista se achica.
+    for (const char *protocolo :
+        {"zwlr_screencopy_manager_v1", "ext_image_copy_capture_manager_v1",
+         "ext_output_image_capture_source_manager_v1", "zwlr_export_dmabuf_manager_v1",
+         "zwlr_data_control_manager_v1", "ext_data_control_manager_v1",
+         "zwp_primary_selection_device_manager_v1", "zwlr_virtual_pointer_manager_v1",
+         "zwp_virtual_keyboard_manager_v1", "zwp_keyboard_shortcuts_inhibit_manager_v1",
+         "ext_session_lock_manager_v1", "zwlr_layer_shell_v1",
+         "zwlr_foreign_toplevel_manager_v1", "zwlr_output_manager_v1",
+         "zwlr_output_power_manager_v1", "zwlr_gamma_control_manager_v1",
+         "zwf_shell_manager_v2"})
+    {
+        comprobar(vasak::gravedad_de(protocolo) != Gravedad::NINGUNA, protocolo);
+    }
+
     std::printf("\nTodo lo que se anota dice para qué sirve\n");
     // Un registro que dice el nombre del protocolo y nada más obliga a buscarlo
     // afuera, que es justo lo que no va a pasar dentro de seis meses.

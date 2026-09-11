@@ -25,10 +25,11 @@ Lo que está expuesto es más que la captura:
 | `zwp_virtual_keyboard_manager_v1` | escribir teclas en cualquier ventana |
 | `zwlr_virtual_pointer_manager_v1` | mover el puntero y hacer clic |
 | `zwp_keyboard_shortcuts_inhibit_manager_v1` | quedarse con los atajos del escritorio |
+| `zwp_primary_selection_device_manager_v1` | leer la selección del medio |
 
-Y aparte, los que no leen nada pero deciden qué se ve: `ext_session_lock_manager_v1`, `zwlr_layer_shell_v1`, `zwlr_output_manager_v1`, `zwlr_output_power_manager_v1`, `zwlr_gamma_control_manager_v1`.
+Y aparte, los que no leen nada pero deciden qué se ve: `ext_session_lock_manager_v1`, `zwlr_layer_shell_v1`, `zwlr_output_manager_v1`, `zwlr_output_power_manager_v1`, `zwlr_gamma_control_manager_v1`, `zwf_shell_manager_v2`.
 
-La lista salió de enumerar los globals de una sesión de verdad con `wayland-info`, no de copiar la de otro proyecto.
+La lista se comprobó enumerando los globals de una sesión de verdad con `wayland-info`, y cubre entera la de `privileged_protocols` que `vasak-desktop-settings` configura para `security-context-v1`. Son dos listas de lo mismo en dos repositorios, o sea dos que se pueden separar: si acá faltara uno que allá se oculta, la semana de medición no vería quién lo pide y la lista de permitidos se decidiría sin ese dato. Hay una prueba que avisa si esta lista se achica.
 
 ### Por qué todavía no niega
 

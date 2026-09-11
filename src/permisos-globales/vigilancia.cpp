@@ -22,11 +22,13 @@ struct Entrada
 // omisión de Wayfire para `security-context-v1` nombra sólo los `zwlr_`, así
 // que oculta el protocolo viejo y deja pasar el nuevo, que hace lo mismo.
 //
-// `ext_output_image_capture_source_manager_v1` estaba expuesto y no figuraba en
-// ninguna lista: es la mitad que dice *qué* capturar del protocolo de captura
-// nuevo. Sin él, `ext_image_copy_capture_manager_v1` no tiene de dónde sacar la
-// imagen de una pantalla.
-constexpr std::array<Entrada, 16> CONOCIDOS{{
+// Esta lista tiene que cubrir la de `privileged_protocols` de
+// `security-context-v1` en `vasak-desktop-settings/etc/skel/.config/wayfire.ini`.
+// Son dos listas de lo mismo en dos repositorios, o sea dos que se pueden
+// separar: si acá falta uno que allá se oculta, la semana de medición no ve
+// quién lo pide y la lista de permitidos se decide sin ese dato. Hay una prueba
+// que lo comprueba contra una copia.
+constexpr std::array<Entrada, 18> CONOCIDOS{{
     // Ver lo que la persona hace.
     {"zwlr_screencopy_manager_v1", Gravedad::ESPIA, "capturar la pantalla"},
     {"ext_image_copy_capture_manager_v1", Gravedad::ESPIA, "capturar la pantalla (reemplazo estándar)"},
@@ -41,6 +43,10 @@ constexpr std::array<Entrada, 16> CONOCIDOS{{
     {"zwp_virtual_keyboard_manager_v1", Gravedad::ESPIA, "escribir teclas en cualquier ventana"},
     {"zwlr_virtual_pointer_manager_v1", Gravedad::ESPIA, "mover el puntero y hacer clic"},
     {"zwp_keyboard_shortcuts_inhibit_manager_v1", Gravedad::ESPIA, "quedarse con los atajos del escritorio"},
+    // Éste pide foco, así que no se lee en segundo plano como los de
+    // `data_control`. Va igual: es la selección del medio, y quien la lee ve lo
+    // que se acaba de marcar en otra ventana.
+    {"zwp_primary_selection_device_manager_v1", Gravedad::ESPIA, "leer la selección del medio"},
 
     // Mandar sobre la sesión. No leen nada, pero deciden qué se ve.
     {"ext_session_lock_manager_v1", Gravedad::GOBIERNA, "ser la pantalla de bloqueo"},
@@ -48,6 +54,10 @@ constexpr std::array<Entrada, 16> CONOCIDOS{{
     {"zwlr_output_manager_v1", Gravedad::GOBIERNA, "reconfigurar las pantallas"},
     {"zwlr_output_power_manager_v1", Gravedad::GOBIERNA, "apagar y encender las pantallas"},
     {"zwlr_gamma_control_manager_v1", Gravedad::GOBIERNA, "cambiar el color de las pantallas"},
+    // El protocolo propio de Wayfire para los clientes del escritorio. Es por
+    // donde el panel se dibuja, así que va a aparecer en el registro todos los
+    // días; está justamente para saber **quién más** lo pide.
+    {"zwf_shell_manager_v2", Gravedad::GOBIERNA, "el protocolo privilegiado del escritorio"},
 }};
 
 const Entrada *buscar(const std::string& protocolo)
