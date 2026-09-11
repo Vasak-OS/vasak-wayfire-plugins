@@ -1,0 +1,40 @@
+# Acá no se llama al workflow compartido de la organización.
+#
+# Ese está hecho para las aplicaciones: mira `package.json`, `Cargo.toml`,
+# biome, `vue-tsc`. Este repositorio no tiene nada de eso — es C++ con meson— y
+# llamarlo sería pedirle que comprobara archivos que no existen.
+#
+# Tampoco se compila el plugin en sí. Necesita los encabezados de Wayfire 0.11,
+# que no están en los repositorios de Ubuntu, así que hacerlo pediría un
+# contenedor de Arch en cada corrida. El plugin se compila al armar el paquete,
+# que es donde esas dependencias ya están. No se deja un paso que lo intente y
+# se perdone si falla: un paso que no puede fallar no comprueba nada y hace
+# creer que sí.
+#
+# Lo que sí se comprueba es lo único que decide algo: `vigilancia.cpp`. Está
+# separado del enganche con Wayfire justamente para esto — no incluye ni un
+# encabezado de Wayland, así que compila y corre en un runner pelado.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    # Sólo lectura: clona, compila y corre pruebas. No comenta, no etiqueta, no
+    # publica.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compilar y correr las pruebas
+        run: |
+          g++ -std=c++20 -Wall -Wextra -Werror \
+            -I src/permisos-globales \
+            -o pruebas-vigilancia \
+            pruebas/vigilancia.cpp src/permisos-globales/vigilancia.cpp
+          ./pruebas-vigilancia

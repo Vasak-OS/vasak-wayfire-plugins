@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<wayfire>
+	<plugin name="permisos-globales">
+		<_short>Permisos de protocolos de Wayland</_short>
+		<_long>Anota qué programa le pide al compositor los protocolos que ven o gobiernan la sesión: capturar la pantalla, leer el portapapeles, escribir teclas. Esta versión no niega nada.</_long>
+		<category>Utility</category>
+	</plugin>
+</wayfire>
