@@ -122,6 +122,78 @@ int main()
     comprobar(vasak::binario_de(-1).find("sin pid") != std::string::npos,
         "un pid negativo también");
 
+    std::printf("\nQuién puede pedir qué\n");
+    // El escritorio tiene que poder dibujarse. Cada una de estas cuatro es una
+    // pieza que, negada, deja la sesión rota de una forma distinta: sin panel,
+    // sin carteles, sin pantalla de bloqueo, sin poder sacar una captura.
+    comprobar(vasak::decidir("/usr/bin/vasak-desktop", "zwlr_layer_shell_v1") ==
+        vasak::Decision::PERMITIR, "el panel puede dibujar encima de todo");
+    comprobar(vasak::decidir("/usr/bin/vasak-flare-daemon", "zwlr_layer_shell_v1") ==
+        vasak::Decision::PERMITIR, "los carteles también");
+    comprobar(vasak::decidir("/usr/bin/gtklock", "ext_session_lock_manager_v1") ==
+        vasak::Decision::PERMITIR, "la pantalla de bloqueo puede bloquear");
+    comprobar(vasak::decidir("/usr/bin/grim", "zwlr_screencopy_manager_v1") ==
+        vasak::Decision::PERMITIR, "grim puede capturar");
+
+    // El portal es el camino por el que un programa de terceros pide la
+    // pantalla con una pregunta de por medio. Negárselo rompe todo compartir
+    // pantalla, que es lo contrario de lo que este plugin busca.
+    comprobar(vasak::decidir("/usr/lib/xdg-desktop-portal-wlr", "zwlr_screencopy_manager_v1") ==
+        vasak::Decision::PERMITIR, "el portal puede capturar");
+
+    comprobar(vasak::decidir("/usr/bin/wl-copy", "zwlr_data_control_manager_v1") ==
+        vasak::Decision::PERMITIR, "el portapapeles se puede copiar");
+    comprobar(vasak::decidir("/usr/bin/wlsunset", "zwlr_gamma_control_manager_v1") ==
+        vasak::Decision::PERMITIR, "la luz nocturna puede cambiar el gamma");
+
+    std::printf("\nY quién no\n");
+    // Lo que este plugin viene a tapar: cualquier programa sacaba una captura y
+    // leía el portapapeles sin pedirle permiso a nadie.
+    comprobar(vasak::decidir("/usr/bin/cualquiera", "zwlr_screencopy_manager_v1") ==
+        vasak::Decision::NEGAR, "un programa cualquiera no captura la pantalla");
+    comprobar(vasak::decidir("/usr/bin/cualquiera", "ext_data_control_manager_v1") ==
+        vasak::Decision::NEGAR, "ni lee el portapapeles");
+    comprobar(vasak::decidir("/usr/bin/cualquiera", "zwp_virtual_keyboard_manager_v1") ==
+        vasak::Decision::NEGAR, "ni escribe teclas");
+
+    // Estar en la lista no es ser de confianza para todo: cada fila dice lo que
+    // ese programa usa. Sin esto, `grim` —que cualquiera puede ejecutar— sería
+    // un pase libre a leer el portapapeles.
+    comprobar(vasak::decidir("/usr/bin/grim", "ext_data_control_manager_v1") ==
+        vasak::Decision::NEGAR, "grim captura pero no lee el portapapeles");
+    comprobar(vasak::decidir("/usr/bin/vasak-desktop", "zwlr_screencopy_manager_v1") ==
+        vasak::Decision::NEGAR, "el panel dibuja pero no captura");
+
+    // Nadie lo pide en todo el escritorio, así que nadie lo tiene.
+    comprobar(vasak::decidir("/usr/bin/vasak-desktop", "zwlr_foreign_toplevel_manager_v1") ==
+        vasak::Decision::NEGAR, "enumerar ventanas no se lo damos a nadie");
+
+    // Lo que no está vigilado tiene que pasar: son casi todos los globals de
+    // Wayland, y negarlos deja al escritorio sin poder abrir una ventana.
+    comprobar(vasak::decidir("/usr/bin/cualquiera", "wl_compositor") ==
+        vasak::Decision::PERMITIR, "los protocolos normales pasan");
+    comprobar(vasak::decidir("/usr/bin/cualquiera", "xdg_wm_base") ==
+        vasak::Decision::PERMITIR, "abrir una ventana también");
+
+    // Una ruta parecida no alcanza: el límite es la ruta absoluta, y escribir
+    // en /usr/bin pide root.
+    comprobar(vasak::decidir("/home/quien/grim", "zwlr_screencopy_manager_v1") ==
+        vasak::Decision::NEGAR, "una copia de grim en el home no hereda nada");
+    comprobar(vasak::decidir("/usr/bin/grim-falso", "zwlr_screencopy_manager_v1") ==
+        vasak::Decision::NEGAR, "ni un nombre parecido");
+
+    std::printf("\nLa vía para desbloquear\n");
+    // Sin esto, un error en la lista se arregla recompilando, y eso no puede
+    // pasar en algo que puede dejar la sesión sin pantalla de bloqueo.
+    vasak::fijar_permitidos_extra({"/usr/bin/obs"});
+    comprobar(vasak::decidir("/usr/bin/obs", "zwlr_screencopy_manager_v1") ==
+        vasak::Decision::PERMITIR, "lo agregado por configuración pasa");
+    comprobar(vasak::decidir("/usr/bin/otro", "zwlr_screencopy_manager_v1") ==
+        vasak::Decision::NEGAR, "y sólo eso");
+    vasak::fijar_permitidos_extra({});
+    comprobar(vasak::decidir("/usr/bin/obs", "zwlr_screencopy_manager_v1") ==
+        vasak::Decision::NEGAR, "al sacarlo vuelve a negarse");
+
     std::printf("\n%s\n", fallos == 0 ? "Todo bien." : "Hay fallos.");
     return fallos == 0 ? 0 : 1;
 }

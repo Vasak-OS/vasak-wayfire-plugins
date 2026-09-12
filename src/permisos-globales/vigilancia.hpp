@@ -43,6 +43,53 @@ Gravedad gravedad_de(const std::string& protocolo);
 const char *para_que_sirve(const std::string& protocolo);
 
 /**
+ * Qué hacer con un pedido.
+ */
+enum class Decision
+{
+    /** Se ofrece el protocolo. */
+    PERMITIR,
+    /** No se ofrece: el cliente no lo ve en el registro y no lo puede pedir. */
+    NEGAR,
+};
+
+/**
+ * Si este binario puede usar este protocolo.
+ *
+ * # De dónde sale la lista
+ *
+ * De **lo que el escritorio necesita**, leído en el código de cada componente,
+ * y no de medir quién lo pide. Medir no servía: el filtro del compositor corre
+ * cuando el protocolo se **ofrece**, no cuando se usa —la propia cabecera de
+ * Wayfire dice «select which globals are advertised to clients»— y todo cliente
+ * de Wayland enumera el registro entero al arrancar. Medido en una sesión real,
+ * `grim` figuraba pidiendo 17 de los 18 protocolos, incluidos la pantalla de
+ * bloqueo y el teclado virtual, que no usa. Una semana de eso habría dado
+ * «todos los programas, todos los protocolos».
+ *
+ * # Acota, no habilita
+ *
+ * Estar en la lista no le da nada a nadie: le deja pedir lo que ya sabíamos que
+ * usa. Lo que no está en la lista se niega, y para eso existe la lista.
+ *
+ * # Lo que se bloquea se tiene que poder desbloquear
+ *
+ * Un programa de terceros que quiera capturar la pantalla tiene el portal, que
+ * pregunta —que es el camino que corresponde—. Y para lo que no pasa por el
+ * portal está `permitidos_extra` en la configuración del plugin, que no exige
+ * recompilar nada. Sin alguna de esas dos cosas esto sería `security-context-v1`
+ * otra vez: bloquear sin poder desbloquear.
+ */
+Decision decidir(const std::string& binario, const std::string& protocolo);
+
+/**
+ * Los binarios que la configuración agrega a la lista, con todo permitido.
+ *
+ * Se fija una vez al arrancar el plugin. Vacío es lo normal.
+ */
+void fijar_permitidos_extra(const std::set<std::string>& binarios);
+
+/**
  * Lo que ya se anotó, para no repetirlo.
  *
  * El filtro se llama por cada global y por cada cliente que enumera el

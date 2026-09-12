@@ -86,6 +86,131 @@ const char *para_que_sirve(const std::string& protocolo)
     return entrada ? entrada->para_que : "";
 }
 
+namespace
+{
+/** Lo que un binario del escritorio tiene permitido pedir. */
+struct Permiso
+{
+    const char *binario;
+    /** Terminada en `nullptr`. */
+    std::array<const char *, 5> protocolos;
+};
+
+/**
+ * Quién puede pedir qué, leído en el código de cada componente.
+ *
+ * Cada fila se justifica sola, y la que no se pueda justificar no va: una
+ * entrada de más es exactamente el agujero que esto viene a tapar.
+ *
+ * Las rutas son absolutas porque es lo que devuelve `/proc/<pid>/exe`, y
+ * absolutas es lo que las hace un límite: escribir en `/usr/bin` pide root, así
+ * que un programa del usuario no puede ponerse en el lugar de uno de éstos.
+ */
+constexpr std::array<Permiso, 14> PERMITIDOS{{
+    // El escritorio y lo que dibuja encima de todo.
+    {"/usr/bin/vasak-desktop", {"zwlr_layer_shell_v1", nullptr}},
+    {"/usr/bin/vasak-flare-daemon", {"zwlr_layer_shell_v1", nullptr}},
+    // La superficie de selección tapa todo, panel incluido.
+    {"/usr/bin/vasak-shot", {"zwlr_layer_shell_v1", nullptr}},
+    {"/usr/bin/slurp", {"zwlr_layer_shell_v1", nullptr}},
+
+    // La pantalla de bloqueo. Los dos: el gestor de sesión la levanta y
+    // `gtklock` es el que la dibuja.
+    {"/usr/bin/vasak-session-manager", {"ext_session_lock_manager_v1", nullptr}},
+    {"/usr/bin/gtklock", {"ext_session_lock_manager_v1", nullptr}},
+
+    // Pulsación larga: el selector se dibuja encima y escribe el carácter
+    // elegido. Teclado y no puntero — lo comprobado en su código.
+    {"/usr/bin/vasak-press-and-hold",
+     {"zwlr_layer_shell_v1", "zwp_virtual_keyboard_manager_v1", nullptr}},
+
+    // Los píxeles de la pantalla. `vasak-shot` no los toma: llama a `grim`.
+    {"/usr/bin/grim",
+     {"zwlr_screencopy_manager_v1", "zwlr_export_dmabuf_manager_v1",
+      "ext_image_copy_capture_manager_v1", "ext_output_image_capture_source_manager_v1", nullptr}},
+    // El portal, que es el camino por el que un programa de terceros pide la
+    // pantalla **con una pregunta de por medio**. Negárselo rompería todo
+    // compartir pantalla, que es lo contrario de lo que esto busca.
+    {"/usr/lib/xdg-desktop-portal-wlr",
+     {"zwlr_screencopy_manager_v1", "zwlr_export_dmabuf_manager_v1",
+      "ext_image_copy_capture_manager_v1", "ext_output_image_capture_source_manager_v1", nullptr}},
+
+    // El portapapeles. Copiar y pegar desde la terminal y desde `vasak-shot`.
+    {"/usr/bin/wl-copy",
+     {"zwlr_data_control_manager_v1", "ext_data_control_manager_v1",
+      "zwp_primary_selection_device_manager_v1", nullptr}},
+    {"/usr/bin/wl-paste",
+     {"zwlr_data_control_manager_v1", "ext_data_control_manager_v1",
+      "zwp_primary_selection_device_manager_v1", nullptr}},
+
+    // Luz nocturna, apagado de pantalla y configuración de monitores. Los tres
+    // los invoca `vasak-settings`, que no habla Wayland: corre estos programas.
+    {"/usr/bin/wlsunset", {"zwlr_gamma_control_manager_v1", nullptr}},
+    {"/usr/bin/wlopm", {"zwlr_output_power_manager_v1", nullptr}},
+    {"/usr/bin/wlr-randr", {"zwlr_output_manager_v1", nullptr}},
+}};
+
+/**
+ * Lo que agrega la configuración. Ver `fijar_permitidos_extra`.
+ *
+ * Global porque el filtro lo consulta en cada llamada y no hay dónde colgarlo:
+ * `decidir` es una función libre a propósito, para poder probarla sin armar un
+ * plugin.
+ */
+std::set<std::string>& extra()
+{
+    static std::set<std::string> permitidos;
+    return permitidos;
+}
+} // namespace
+
+void fijar_permitidos_extra(const std::set<std::string>& binarios)
+{
+    extra() = binarios;
+}
+
+Decision decidir(const std::string& binario, const std::string& protocolo)
+{
+    // Lo que no está vigilado no es asunto de este plugin: la inmensa mayoría de
+    // los globals son los normales de Wayland, y negarlos dejaría al escritorio
+    // sin poder dibujar una ventana.
+    if (gravedad_de(protocolo) == Gravedad::NINGUNA)
+    {
+        return Decision::PERMITIR;
+    }
+
+    // La vía de escape, antes que la tabla: es la que alguien usa cuando algo
+    // que esta lista no previó dejó de funcionar.
+    if (extra().count(binario) > 0)
+    {
+        return Decision::PERMITIR;
+    }
+
+    for (const auto& permiso : PERMITIDOS)
+    {
+        if (binario != permiso.binario)
+        {
+            continue;
+        }
+        for (const char *permitido : permiso.protocolos)
+        {
+            if (permitido == nullptr)
+            {
+                break;
+            }
+            if (protocolo == permitido)
+            {
+                return Decision::PERMITIR;
+            }
+        }
+        // Está en la lista, pero no con este protocolo. Se niega igual: la fila
+        // dice lo que ese programa usa, no que sea de confianza para todo.
+        return Decision::NEGAR;
+    }
+
+    return Decision::NEGAR;
+}
+
 bool Memoria::es_nuevo(const std::string& binario, const std::string& protocolo)
 {
     return vistos.emplace(binario, protocolo).second;

@@ -2,7 +2,17 @@
 <wayfire>
 	<plugin name="permisos-globales">
 		<_short>Permisos de protocolos de Wayland</_short>
-		<_long>Anota qué programa le pide al compositor los protocolos que ven o gobiernan la sesión: capturar la pantalla, leer el portapapeles, escribir teclas. Esta versión no niega nada.</_long>
+		<_long>Los protocolos que ven o gobiernan la sesión —capturar la pantalla, leer el portapapeles, escribir teclas— van sólo a los programas del escritorio que los necesitan. El resto no los ve. Lo que se niega queda en el registro.</_long>
 		<category>Utility</category>
+		<option name="solo_anotar" type="bool">
+			<_short>Sólo anotar</_short>
+			<_long>Registrar lo que se negaría, sin negarlo. Es la salida si algo deja de funcionar: devuelve el escritorio a como estaba sin reiniciar la sesión.</_long>
+			<default>false</default>
+		</option>
+		<option name="permitidos_extra" type="string">
+			<_short>Programas permitidos además</_short>
+			<_long>Rutas absolutas separadas por comas, para darle los protocolos privilegiados a algo que la lista no previó. Ejemplo: /usr/bin/obs</_long>
+			<default></default>
+		</option>
 	</plugin>
 </wayfire>

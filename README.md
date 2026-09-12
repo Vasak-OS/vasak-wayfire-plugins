@@ -4,7 +4,7 @@ Plugins de Wayfire de VasakOS.
 
 ## `permisos-globales`
 
-Anota qué programa le pide al compositor los protocolos de Wayland que **ven o gobiernan la sesión**. Por ahora sólo anota: no niega nada.
+Los protocolos de Wayland que **ven o gobiernan la sesión** van sólo a los programas del escritorio que los necesitan. Al resto no se le ofrecen, así que no los puede pedir.
 
 ### Por qué
 
@@ -31,11 +31,42 @@ Y aparte, los que no leen nada pero deciden qué se ve: `ext_session_lock_manage
 
 La lista se comprobó enumerando los globals de una sesión de verdad con `wayland-info`, y cubre entera la de `privileged_protocols` que `vasak-desktop-settings` configura para `security-context-v1`. Son dos listas de lo mismo en dos repositorios, o sea dos que se pueden separar: si acá faltara uno que allá se oculta, la semana de medición no vería quién lo pide y la lista de permitidos se decidiría sin ese dato. Hay una prueba que avisa si esta lista se achica.
 
-### Por qué todavía no niega
+### De dónde sale la lista
 
-Porque no se sabe quién los usa. Negar primero y ver qué se rompe deja el escritorio sin poder dibujarse —el panel, la pantalla de bloqueo, los carteles y `vasak-shot` están del otro lado de esta misma puerta— y el problema aparece cuando ya nadie puede leer el error.
+De **lo que el escritorio necesita**, leído en el código de cada componente. No de medir quién lo pide.
 
-Con una semana de sesiones normales anotadas se sabe qué programas piden qué, y recién entonces se decide la lista de permitidos.
+El plan era medir una semana y decidir con esos datos. Queda escrito por qué no sirve, para que nadie lo reintente: el filtro corre cuando el compositor **ofrece** el protocolo, no cuando el cliente lo usa. La cabecera de Wayfire lo dice textual —«select which globals are *advertised* to clients»— y todo cliente de Wayland enumera el registro entero al arrancar. Medido en una sesión real, `grim` figuraba pidiendo 17 de los 18 protocolos vigilados, incluidos la pantalla de bloqueo, el teclado virtual y el control de gamma, que no usa. Una semana de eso da «todos los programas, todos los protocolos», que no decide nada. No hay enganche en el *bind* en esa API.
+
+| programa | qué le damos | por qué |
+|---|---|---|
+| `vasak-desktop` | `layer_shell` | el panel y el escritorio se dibujan encima |
+| `vasak-flare-daemon` | `layer_shell` | los carteles |
+| `vasak-shot`, `slurp` | `layer_shell` | la superficie de selección tapa todo |
+| `vasak-session-manager`, `gtklock` | `session_lock` | la pantalla de bloqueo |
+| `vasak-press-and-hold` | `layer_shell`, `virtual_keyboard` | el selector se dibuja encima y escribe el carácter |
+| `grim` | captura (los cuatro) | los píxeles; `vasak-shot` no los toma, lo llama a él |
+| `xdg-desktop-portal-wlr` | captura (los cuatro) | el camino con pregunta de por medio |
+| `wl-copy`, `wl-paste` | `data_control`, selección primaria | copiar y pegar |
+| `wlsunset` | `gamma_control` | luz nocturna |
+| `wlopm` | `output_power` | apagar la pantalla |
+| `wlr-randr` | `output_manager` | configurar monitores |
+
+**Acota, no habilita.** Estar en la lista no le da nada a nadie: le deja pedir lo que ya sabíamos que usa. Por eso cada fila nombra sus protocolos y no «todos»: `grim` lo puede ejecutar cualquiera, así que si estar en la lista fuera un pase libre, sería el pase libre a leer el portapapeles.
+
+**Lo que no le damos a nadie**: enumerar ventanas y títulos (`foreign_toplevel`, ambos), puntero virtual, inhibir atajos y `zwf_shell`. Ningún componente del escritorio los usa — el panel lista ventanas por el socket IPC de Wayfire, y `vasak-monitor` las cuenta con `ss -x`.
+
+### Si esto rompe algo
+
+`solo_anotar = true` en `wayfire.ini` y el escritorio vuelve a como estaba, sin reiniciar la sesión: Wayfire relee su configuración sola. El registro dice qué se negó y a quién, que es con lo que se arregla la lista.
+
+Para permitir algo puntual sin tocar el código:
+
+```ini
+[permisos-globales]
+permitidos_extra = /usr/bin/obs
+```
+
+Un programa de terceros que quiera la pantalla tiene además el portal, que pregunta. Sin alguna de esas dos salidas esto sería `security-context-v1` otra vez: bloquear sin poder desbloquear.
 
 ### Por qué no `security-context-v1`
 
@@ -53,13 +84,13 @@ Wayfire 0.11 expone la forma correcta: `wf::compositor_core_t::create_global_fil
 
 ### Qué escribe
 
-Una línea por cada combinación nueva de programa y protocolo, en el registro de Wayfire:
+Una línea por cada combinación nueva de programa y protocolo **negada**, en el registro de Wayfire:
 
 ```
-II ... - [permisos-globales] /usr/bin/grim pide zwlr_screencopy_manager_v1 (capturar la pantalla) [espia]
+II ... - [permisos-globales] negado a /usr/bin/cualquiera: zwlr_screencopy_manager_v1 (capturar la pantalla)
 ```
 
-Una sola vez por par. El filtro se llama por cada global y por cada cliente que enumera el registro —decenas de veces cada vez que arranca un programa—, así que anotar todo taparía el resto del registro del escritorio.
+Sólo lo negado, y una sola vez por par. Lo permitido es lo normal, y anotarlo taparía esto —que es lo que alguien busca cuando algo dejó de funcionar—. El filtro se llama por cada global y por cada cliente que enumera el registro, decenas de veces por programa que arranca.
 
 Para leerlo:
 
