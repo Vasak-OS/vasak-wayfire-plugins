@@ -43,6 +43,53 @@ Gravedad gravedad_de(const std::string& protocolo);
 const char *para_que_sirve(const std::string& protocolo);
 
 /**
+ * Qué hacer con un pedido.
+ */
+enum class Decision
+{
+    /** Se ofrece el protocolo. */
+    PERMITIR,
+    /** No se ofrece: el cliente no lo ve en el registro y no lo puede pedir. */
+    NEGAR,
+};
+
+/**
+ * Si este binario puede usar este protocolo.
+ *
+ * # De dónde sale la lista
+ *
+ * De **lo que el escritorio necesita**, leído en el código de cada componente,
+ * y no de medir quién lo pide. Medir no servía: el filtro del compositor corre
+ * cuando el protocolo se **ofrece**, no cuando se usa —la propia cabecera de
+ * Wayfire dice «select which globals are advertised to clients»— y todo cliente
+ * de Wayland enumera el registro entero al arrancar. Medido en una sesión real,
+ * `grim` figuraba pidiendo 17 de los 18 protocolos, incluidos la pantalla de
+ * bloqueo y el teclado virtual, que no usa. Una semana de eso habría dado
+ * «todos los programas, todos los protocolos».
+ *
+ * # Acota, no habilita
+ *
+ * Estar en la lista no le da nada a nadie: le deja pedir lo que ya sabíamos que
+ * usa. Lo que no está en la lista se niega, y para eso existe la lista.
+ *
+ * # Lo que se bloquea se tiene que poder desbloquear
+ *
+ * Un programa de terceros que quiera capturar la pantalla tiene el portal, que
+ * pregunta —que es el camino que corresponde—. Y para lo que no pasa por el
+ * portal está `permitidos_extra` en la configuración del plugin, que no exige
+ * recompilar nada. Sin alguna de esas dos cosas esto sería `security-context-v1`
+ * otra vez: bloquear sin poder desbloquear.
+ */
+Decision decidir(const std::string& binario, const std::string& protocolo);
+
+/**
+ * Los binarios que la configuración agrega a la lista, con todo permitido.
+ *
+ * Se fija una vez al arrancar el plugin. Vacío es lo normal.
+ */
+void fijar_permitidos_extra(const std::set<std::string>& binarios);
+
+/**
  * Lo que ya se anotó, para no repetirlo.
  *
  * El filtro se llama por cada global y por cada cliente que enumera el
@@ -75,4 +122,33 @@ class Memoria
  * leer)» sirve para buscar, y uno vacío no.
  */
 std::string binario_de(pid_t pid);
+
+/**
+ * Si este cliente lo creó el compositor mismo.
+ *
+ * Xwayland no se conecta al socket de Wayland como todos: Wayfire le arma un
+ * `socketpair`, llama a `wl_client_create` sobre una punta y le pasa la otra
+ * por `WAYLAND_SOCKET`. `SO_PEERCRED` —de donde sale
+ * `wl_client_get_credentials`— se sella cuando se crea el par, con el pid de
+ * quien lo creó. O sea que Xwayland, y cualquier otro cliente que el
+ * compositor arme así, llega con **el pid de Wayfire**, y `/proc/<pid>/exe`
+ * dice `/usr/bin/wayfire`.
+ *
+ * Medido: en una sesión con Xwayland corriendo, Xwayland no aparece nunca en
+ * el registro —y el filtro pasa por cada cliente— mientras que
+ * `/usr/bin/wayfire` aparece como el primero de todos. Su `WAYLAND_SOCKET`
+ * está puesto, que es la prueba de que el socket se lo dieron hecho.
+ *
+ * Negarle a esto es negarle a Xwayland, y con ello dejar a **todas** las
+ * aplicaciones X11 sin selección primaria ni portapapeles. Además de inútil:
+ * lo que el compositor quiera, ya lo tiene sin pedirlo por Wayland.
+ *
+ * Se compara el **pid**, no la ruta del binario: la ruta la comparte un
+ * Wayfire anidado que alguien lance como cliente, y ése no es plomería
+ * nuestra. Un pid no se puede falsificar.
+ */
+inline bool es_plomeria_del_compositor(pid_t del_cliente, pid_t propio)
+{
+    return del_cliente == propio;
+}
 } // namespace vasak

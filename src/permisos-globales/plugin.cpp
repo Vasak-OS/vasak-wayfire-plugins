@@ -9,14 +9,24 @@
 // del portapapeles. Mientras eso siga así, la pregunta del portal es una
 // formalidad que se saltea quien quiere.
 //
-// # Por qué este plugin todavía no niega nada
+// # De dónde sale la lista de permitidos
 //
-// Porque no se sabe quién los usa. Negar primero y ver qué se rompe deja el
-// escritorio sin dibujarse —el panel, la pantalla de bloqueo, los carteles y
-// `vasak-shot` están del otro lado de esta misma puerta— y el problema
-// aparece cuando ya nadie puede leer el error. Así que esta primera versión
-// **anota y deja pasar**: con una semana de sesiones normales se sabe qué
-// programas piden qué, y recién entonces se decide la lista de permitidos.
+// De lo que el escritorio necesita, leído en el código de cada componente.
+//
+// El plan anterior era medir una semana y decidir con esos datos. No sirve, y
+// conviene que quede escrito para que nadie lo reintente: este filtro corre
+// cuando el compositor **ofrece** el protocolo, no cuando el cliente lo usa
+// —la cabecera de Wayfire dice «select which globals are advertised to
+// clients»— y todo cliente de Wayland enumera el registro entero al arrancar.
+// Medido en una sesión real, `grim` figuraba pidiendo 17 de los 18 protocolos
+// vigilados, incluidos la pantalla de bloqueo y el teclado virtual, que no usa.
+// Una semana de eso habría dado «todos los programas, todos los protocolos».
+//
+// # Si esto rompe algo
+//
+// `solo_anotar = true` en `wayfire.ini` y el escritorio vuelve a como estaba,
+// sin reiniciar la sesión: Wayfire relee su configuración sola. El registro dice
+// qué se negó y a quién, que es con lo que se arregla la lista.
 //
 // # Por qué no `wl_display_set_global_filter`
 //
@@ -34,8 +44,14 @@
 #include "vigilancia.hpp"
 
 #include <wayfire/core.hpp>
+#include <wayfire/option-wrapper.hpp>
 #include <wayfire/plugin.hpp>
 #include <wayfire/util/log.hpp>
+
+#include <set>
+#include <string>
+
+#include <unistd.h>
 
 #include <wayland-server-core.h>
 
@@ -44,17 +60,24 @@ class permisos_globales_t : public wf::plugin_interface_t
   public:
     void init() override
     {
+        vasak::fijar_permitidos_extra(leer_permitidos_extra());
+
         filtro = wf::get_core().create_global_filter();
         filtro->set_filter([this] (const wl_client *cliente, const wl_global *global)
         {
-            anotar(cliente, global);
-
-            // Siempre. Esta versión mira y no decide.
-            return true;
+            return decidir(cliente, global);
         });
 
-        LOGI("[permisos-globales] anotando quién pide los protocolos privilegiados; "
-             "esta versión no niega nada");
+        if (solo_anotar)
+        {
+            LOGI("[permisos-globales] SOLO ANOTANDO: se registra lo que se negaría, "
+                 "pero no se niega nada. Quitá `solo_anotar` de wayfire.ini para que rija.");
+        } else
+        {
+            LOGI("[permisos-globales] los protocolos privilegiados van sólo a los "
+                 "programas del escritorio; si algo dejó de andar, el registro dice qué "
+                 "se negó y `solo_anotar = true` lo devuelve todo");
+        }
     }
 
     void fini() override
@@ -74,40 +97,103 @@ class permisos_globales_t : public wf::plugin_interface_t
     }
 
   private:
-    void anotar(const wl_client *cliente, const wl_global *global)
+    /**
+     * Lee de la configuración los binarios que se agregan a la lista.
+     *
+     * Rutas absolutas separadas por comas. Es la vía para desbloquear algo que
+     * la lista compilada no previó sin tener que recompilar el plugin.
+     */
+    std::set<std::string> leer_permitidos_extra() const
     {
-        // Lo barato primero. Esto corre por cada global y por cada cliente que
-        // enumera el registro —decenas de veces cada vez que arranca un
-        // programa—, así que todo lo que no sea una comparación de cadenas
-        // tiene que quedar detrás de esta guarda.
+        std::set<std::string> binarios;
+        const std::string crudo = permitidos_extra;
+
+        std::size_t desde = 0;
+        while (desde <= crudo.size())
+        {
+            const std::size_t coma = crudo.find(',', desde);
+            const std::size_t hasta = (coma == std::string::npos) ? crudo.size() : coma;
+
+            std::string ruta = crudo.substr(desde, hasta - desde);
+            const std::size_t principio = ruta.find_first_not_of(" \t");
+            const std::size_t final = ruta.find_last_not_of(" \t");
+            if (principio != std::string::npos)
+            {
+                binarios.insert(ruta.substr(principio, final - principio + 1));
+            }
+
+            if (coma == std::string::npos)
+            {
+                break;
+            }
+            desde = coma + 1;
+        }
+
+        return binarios;
+    }
+
+    bool decidir(const wl_client *cliente, const wl_global *global)
+    {
         const wl_interface *interfaz = wl_global_get_interface(global);
         if (!interfaz || !interfaz->name)
         {
-            return;
+            return true;
         }
 
         const std::string protocolo = interfaz->name;
-        const vasak::Gravedad gravedad = vasak::gravedad_de(protocolo);
-        if (gravedad == vasak::Gravedad::NINGUNA)
+        if (vasak::gravedad_de(protocolo) == vasak::Gravedad::NINGUNA)
         {
-            return;
+            // Lo barato primero: la inmensa mayoría de los globals son los
+            // normales de Wayland y no hay que leer `/proc` por cada uno.
+            return true;
         }
 
         pid_t pid = 0;
         uid_t uid = 0;
         gid_t gid = 0;
-        wl_client_get_credentials(cliente, &pid, &uid, &gid);
+        wl_client_get_credentials(const_cast<wl_client*>(cliente), &pid, &uid, &gid);
 
-        const std::string binario = vasak::binario_de(pid);
-        if (!memoria.es_nuevo(binario, protocolo))
+        // Lo que armó el propio compositor —Xwayland, sobre todo— llega con el
+        // pid de Wayfire. Ver `es_plomeria_del_compositor`: negarle acá sería
+        // negarle a Xwayland, y con él a todas las aplicaciones X11.
+        if (vasak::es_plomeria_del_compositor(pid, ::getpid()))
         {
-            return;
+            return true;
         }
 
-        LOGI("[permisos-globales] ", binario, " pide ", protocolo,
-            " (", vasak::para_que_sirve(protocolo), ")",
-            gravedad == vasak::Gravedad::ESPIA ? " [espia]" : " [gobierna]");
+        const std::string binario = vasak::binario_de(pid);
+        const bool permitido = vasak::decidir(binario, protocolo) == vasak::Decision::PERMITIR;
+
+        if (!permitido && memoria.es_nuevo(binario, protocolo))
+        {
+            // Una línea por par, y sólo de lo que se niega: lo permitido es lo
+            // normal y anotarlo taparía esto, que es lo que alguien busca
+            // cuando algo dejó de funcionar.
+            LOGI("[permisos-globales] ", solo_anotar ? "se negaría a " : "negado a ",
+                binario, ": ", protocolo, " (", vasak::para_que_sirve(protocolo), ")");
+        }
+
+        return permitido || solo_anotar;
     }
+
+    /**
+     * Devuelve todo a como estaba, sin reiniciar la sesión.
+     *
+     * Es la salida cuando esta lista se equivoca y algo del escritorio deja de
+     * funcionar: Wayfire relee su configuración sola, así que alcanza con
+     * editar `wayfire.ini`. Sin esto, un error en la lista se arregla
+     * recompilando, que es lo que no puede pasar en algo que puede dejar la
+     * sesión sin pantalla de bloqueo.
+     */
+    wf::option_wrapper_t<bool> solo_anotar{"permisos-globales/solo_anotar"};
+
+    /**
+     * Binarios que se suman a la lista, con todo permitido.
+     *
+     * Rutas absolutas separadas por comas. Para lo que no pasa por el portal y
+     * la lista compilada no previó.
+     */
+    wf::option_wrapper_t<std::string> permitidos_extra{"permisos-globales/permitidos_extra"};
 
     std::unique_ptr<wf::wayland_global_filter_t> filtro;
     vasak::Memoria memoria;
