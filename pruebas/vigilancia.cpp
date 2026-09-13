@@ -130,8 +130,14 @@ int main()
         vasak::Decision::PERMITIR, "el panel puede dibujar encima de todo");
     comprobar(vasak::decidir("/usr/bin/vasak-flare-daemon", "zwlr_layer_shell_v1") ==
         vasak::Decision::PERMITIR, "los carteles también");
-    comprobar(vasak::decidir("/usr/bin/gtklock", "ext_session_lock_manager_v1") ==
+    // El binario, no el paquete: `vasak-session-manager` publica tres, y el
+    // que bloquea es éste. Escrito como prueba porque la lista decía el
+    // nombre del gestor de sesión y el bloqueo no se tomaba —y sin bloqueo la
+    // sesión sigue a la vista al suspender, que es peor que no tener plugin.
+    comprobar(vasak::decidir("/usr/bin/vasak-lock-screen", "ext_session_lock_manager_v1") ==
         vasak::Decision::PERMITIR, "la pantalla de bloqueo puede bloquear");
+    comprobar(vasak::decidir("/usr/bin/vasak-session-manager", "ext_session_lock_manager_v1") ==
+        vasak::Decision::NEGAR, "el greeter no bloquea: corre contra otro compositor");
     comprobar(vasak::decidir("/usr/bin/grim", "zwlr_screencopy_manager_v1") ==
         vasak::Decision::PERMITIR, "grim puede capturar");
 

@@ -106,7 +106,7 @@ struct Permiso
  * absolutas es lo que las hace un límite: escribir en `/usr/bin` pide root, así
  * que un programa del usuario no puede ponerse en el lugar de uno de éstos.
  */
-constexpr std::array<Permiso, 14> PERMITIDOS{{
+constexpr std::array<Permiso, 13> PERMITIDOS{{
     // El escritorio y lo que dibuja encima de todo.
     {"/usr/bin/vasak-desktop", {"zwlr_layer_shell_v1", nullptr}},
     {"/usr/bin/vasak-flare-daemon", {"zwlr_layer_shell_v1", nullptr}},
@@ -114,10 +114,20 @@ constexpr std::array<Permiso, 14> PERMITIDOS{{
     {"/usr/bin/vasak-shot", {"zwlr_layer_shell_v1", nullptr}},
     {"/usr/bin/slurp", {"zwlr_layer_shell_v1", nullptr}},
 
-    // La pantalla de bloqueo. Los dos: el gestor de sesión la levanta y
-    // `gtklock` es el que la dibuja.
-    {"/usr/bin/vasak-session-manager", {"ext_session_lock_manager_v1", nullptr}},
-    {"/usr/bin/gtklock", {"ext_session_lock_manager_v1", nullptr}},
+    // La pantalla de bloqueo, que es **un binario aparte** del gestor de
+    // sesión aunque los publique el mismo paquete: `vasak-session-manager` es
+    // el greeter y corre antes de la sesión, contra otro compositor; el que
+    // toma `ext-session-lock` acá adentro es `vasak-lock-screen`
+    // (`src/lock_main.rs`, vía `libgtk-session-lock`), y es a quien lo
+    // invocan tanto `command_lock` de wayfire.ini como `vasak-idle.service`.
+    //
+    // Acá antes decía `vasak-session-manager` y `gtklock`, y las dos estaban
+    // mal: el greeter no lo pide nunca y `gtklock` quedó reemplazado —lo dice
+    // el propio `vasak-idle.service`—. Con esa fila el bloqueo no se tomaba y
+    // la pantalla **no se bloqueaba**: `gtk_session_lock_is_supported()`
+    // devuelve 0, `acquire()` corta con «el compositor no implementa
+    // ext-session-lock» y la sesión sigue a la vista al suspender.
+    {"/usr/bin/vasak-lock-screen", {"ext_session_lock_manager_v1", nullptr}},
 
     // Pulsación larga: el selector se dibuja encima y escribe el carácter
     // elegido. Teclado y no puntero — lo comprobado en su código.
