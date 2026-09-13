@@ -51,6 +51,8 @@
 #include <set>
 #include <string>
 
+#include <unistd.h>
+
 #include <wayland-server-core.h>
 
 class permisos_globales_t : public wf::plugin_interface_t
@@ -150,6 +152,14 @@ class permisos_globales_t : public wf::plugin_interface_t
         uid_t uid = 0;
         gid_t gid = 0;
         wl_client_get_credentials(const_cast<wl_client*>(cliente), &pid, &uid, &gid);
+
+        // Lo que armó el propio compositor —Xwayland, sobre todo— llega con el
+        // pid de Wayfire. Ver `es_plomeria_del_compositor`: negarle acá sería
+        // negarle a Xwayland, y con él a todas las aplicaciones X11.
+        if (vasak::es_plomeria_del_compositor(pid, ::getpid()))
+        {
+            return true;
+        }
 
         const std::string binario = vasak::binario_de(pid);
         const bool permitido = vasak::decidir(binario, protocolo) == vasak::Decision::PERMITIR;

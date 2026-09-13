@@ -152,6 +152,13 @@ int main()
     comprobar(vasak::decidir("/usr/bin/wlsunset", "zwlr_gamma_control_manager_v1") ==
         vasak::Decision::PERMITIR, "la luz nocturna puede cambiar el gamma");
 
+    // Xwayland llega con el pid de Wayfire, porque el compositor le arma el
+    // socket. Negarle deja a todas las aplicaciones X11 sin portapapeles.
+    comprobar(vasak::es_plomeria_del_compositor(4321, 4321),
+        "lo que armó el compositor pasa");
+    comprobar(!vasak::es_plomeria_del_compositor(4322, 4321),
+        "y un pid ajeno no, aunque corra el mismo binario");
+
     std::printf("\nY quién no\n");
     // Lo que este plugin viene a tapar: cualquier programa sacaba una captura y
     // leía el portapapeles sin pedirle permiso a nadie.

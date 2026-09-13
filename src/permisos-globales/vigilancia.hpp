@@ -122,4 +122,33 @@ class Memoria
  * leer)» sirve para buscar, y uno vacío no.
  */
 std::string binario_de(pid_t pid);
+
+/**
+ * Si este cliente lo creó el compositor mismo.
+ *
+ * Xwayland no se conecta al socket de Wayland como todos: Wayfire le arma un
+ * `socketpair`, llama a `wl_client_create` sobre una punta y le pasa la otra
+ * por `WAYLAND_SOCKET`. `SO_PEERCRED` —de donde sale
+ * `wl_client_get_credentials`— se sella cuando se crea el par, con el pid de
+ * quien lo creó. O sea que Xwayland, y cualquier otro cliente que el
+ * compositor arme así, llega con **el pid de Wayfire**, y `/proc/<pid>/exe`
+ * dice `/usr/bin/wayfire`.
+ *
+ * Medido: en una sesión con Xwayland corriendo, Xwayland no aparece nunca en
+ * el registro —y el filtro pasa por cada cliente— mientras que
+ * `/usr/bin/wayfire` aparece como el primero de todos. Su `WAYLAND_SOCKET`
+ * está puesto, que es la prueba de que el socket se lo dieron hecho.
+ *
+ * Negarle a esto es negarle a Xwayland, y con ello dejar a **todas** las
+ * aplicaciones X11 sin selección primaria ni portapapeles. Además de inútil:
+ * lo que el compositor quiera, ya lo tiene sin pedirlo por Wayland.
+ *
+ * Se compara el **pid**, no la ruta del binario: la ruta la comparte un
+ * Wayfire anidado que alguien lance como cliente, y ése no es plomería
+ * nuestra. Un pid no se puede falsificar.
+ */
+inline bool es_plomeria_del_compositor(pid_t del_cliente, pid_t propio)
+{
+    return del_cliente == propio;
+}
 } // namespace vasak
