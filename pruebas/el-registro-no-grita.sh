@@ -45,7 +45,28 @@ fi
 if printf '%s' "$cuerpo" | grep -q 'negado a '; then
     mal 'volvió el «negado a»: es un ocultamiento, no un rechazo, y esa palabra manda a buscar un fallo que no existe'
 else
-    bien 'el texto dice que no se ofrece, no que se negó'
+    bien 'no volvió el «negado a»'
+fi
+
+# Y no alcanza con rechazar la palabra vieja: sin exigir la nueva, cualquier
+# texto pasa la prueba —incluido uno que vuelva a describir un rechazo con
+# otras palabras—. Las dos formas porque el modo `solo_anotar` usa la
+# condicional.
+if printf '%s' "$cuerpo" | grep -q 'no se le ofrece a ' \
+    && printf '%s' "$cuerpo" | grep -q 'no se le ofrecería a '; then
+    bien 'el texto dice que no se ofrece, en los dos modos'
+else
+    mal 'falta alguna de las dos formas de «no se le ofrece»: el texto tiene que decir qué pasó, no sólo evitar la palabra vieja'
+fi
+
+# El resumen de `fini()` no puede afirmar que no se ofreció nada cuando
+# `solo_anotar` ofrece todo igual: ahí la memoria registra lo mismo, pero el
+# hecho es el contrario.
+resumen=$(grep -A4 'fin; ' "$FUENTE")
+if printf '%s' "$resumen" | grep -q 'solo_anotar'; then
+    bien 'el resumen final distingue el modo solo_anotar'
+else
+    mal 'el resumen de fini() no mira solo_anotar: en ese modo diría que no se ofreció algo que sí se ofreció'
 fi
 
 # Y la línea de arranque tiene que seguir diciendo dónde está el detalle, o

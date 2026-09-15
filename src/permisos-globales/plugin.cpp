@@ -92,8 +92,13 @@ class permisos_globales_t : public wf::plugin_interface_t
         // El único número de todo esto que va en info, y por eso se queda: dice
         // de un vistazo si el filtro estuvo haciendo algo, sin las cientos de
         // líneas del detalle.
-        LOGI("[permisos-globales] fin; no se ofrecieron ", memoria.cuantos(),
-            " combinaciones de programa y protocolo");
+        //
+        // El texto depende del modo porque el hecho depende del modo: con
+        // `solo_anotar` la memoria registra lo mismo pero **se ofrece todo
+        // igual**, así que decir «no se ofrecieron» ahí sería falso.
+        LOGI("[permisos-globales] fin; ",
+            solo_anotar ? "se habrían dejado de ofrecer " : "no se ofrecieron ",
+            memoria.cuantos(), " combinaciones de programa y protocolo");
     }
 
     bool is_unloadable() override
