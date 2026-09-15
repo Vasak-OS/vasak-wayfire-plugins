@@ -70,13 +70,15 @@ class permisos_globales_t : public wf::plugin_interface_t
 
         if (solo_anotar)
         {
-            LOGI("[permisos-globales] SOLO ANOTANDO: se registra lo que se negaría, "
-                 "pero no se niega nada. Quitá `solo_anotar` de wayfire.ini para que rija.");
+            LOGI("[permisos-globales] SOLO ANOTANDO: se registra lo que se dejaría de "
+                 "ofrecer, pero se ofrece todo igual. El detalle va en nivel debug. "
+                 "Quitá `solo_anotar` de wayfire.ini para que rija.");
         } else
         {
             LOGI("[permisos-globales] los protocolos privilegiados van sólo a los "
-                 "programas del escritorio; si algo dejó de andar, el registro dice qué "
-                 "se negó y `solo_anotar = true` lo devuelve todo");
+                 "programas del escritorio. El detalle de qué no se le ofrece a quién "
+                 "va en nivel debug (`WAYFIRE_DEBUG=1` o `core/debug`); si algo dejó de "
+                 "andar, ahí está, y `solo_anotar = true` lo devuelve todo");
         }
     }
 
@@ -87,7 +89,10 @@ class permisos_globales_t : public wf::plugin_interface_t
         // `fini()` antes de liberar el plugin, y entre esas dos cosas el filtro
         // no tiene que seguir llamando a un `this` que está por irse.
         filtro.reset();
-        LOGI("[permisos-globales] fin; se anotaron ", memoria.cuantos(),
+        // El único número de todo esto que va en info, y por eso se queda: dice
+        // de un vistazo si el filtro estuvo haciendo algo, sin las cientos de
+        // líneas del detalle.
+        LOGI("[permisos-globales] fin; no se ofrecieron ", memoria.cuantos(),
             " combinaciones de programa y protocolo");
     }
 
@@ -166,10 +171,28 @@ class permisos_globales_t : public wf::plugin_interface_t
 
         if (!permitido && memoria.es_nuevo(binario, protocolo))
         {
-            // Una línea por par, y sólo de lo que se niega: lo permitido es lo
-            // normal y anotarlo taparía esto, que es lo que alguien busca
-            // cuando algo dejó de funcionar.
-            LOGI("[permisos-globales] ", solo_anotar ? "se negaría a " : "negado a ",
+            // # Por qué «no se le ofrece» y no «negado»
+            //
+            // Esto es un filtro de **globals**: corre cuando un cliente enumera
+            // el registro, no cuando pide algo. Nadie pidió nada — un cliente de
+            // Wayland cualquiera enumera el registro entero al conectarse. Decir
+            // «negado» describe un rechazo que no hubo, y manda a buscar un
+            // fallo que no existe: pasó, `zwf_shell_manager_v2` «negado» a
+            // `/usr/bin/vasak-desktop` parecía un permiso faltante cuando el
+            // binario del escritorio ni siquiera nombra ese protocolo.
+            //
+            // # Por qué debug y no info
+            //
+            // Son dieciséis líneas por cliente que se conecta. Medido: **276 en
+            // un solo arranque**, de diecisiete binarios. La idea era que quien
+            // busca por qué algo dejó de funcionar lo encuentre acá, y con ese
+            // volumen pasa lo contrario — tapa todo lo demás del arranque.
+            //
+            // En debug sigue estando entero, y la línea de `init()` dice cómo
+            // verlo. Una línea por par, y sólo de lo que no se ofrece: lo
+            // ofrecido es lo normal.
+            LOGD("[permisos-globales] ",
+                solo_anotar ? "no se le ofrecería a " : "no se le ofrece a ",
                 binario, ": ", protocolo, " (", vasak::para_que_sirve(protocolo), ")");
         }
 
