@@ -130,6 +130,16 @@ int main()
         vasak::Decision::PERMITIR, "el panel puede dibujar encima de todo");
     comprobar(vasak::decidir("/usr/bin/vasak-flare-daemon", "zwlr_layer_shell_v1") ==
         vasak::Decision::PERMITIR, "los carteles también");
+    // Sin esto el lanzador no se cae —pregunta antes y usa una ventana común—,
+    // pero aparece donde el compositor quiera y sin quedarse con el teclado, que
+    // es todo lo que un lanzador necesita.
+    comprobar(vasak::decidir("/usr/bin/vasak-prism", "zwlr_layer_shell_v1") ==
+        vasak::Decision::PERMITIR, "el lanzador puede dibujar encima de todo");
+    // Y nada más que eso: las ventanas abiertas se las pide a `vasak-desktop`.
+    comprobar(vasak::decidir("/usr/bin/vasak-prism", "zwlr_foreign_toplevel_manager_v1") ==
+        vasak::Decision::NEGAR, "el lanzador no enumera ventanas por su cuenta");
+    comprobar(vasak::decidir("/usr/bin/vasak-prism", "zwlr_screencopy_manager_v1") ==
+        vasak::Decision::NEGAR, "ni captura la pantalla");
     // El binario, no el paquete: `vasak-session-manager` publica tres, y el
     // que bloquea es éste. Escrito como prueba porque la lista decía el
     // nombre del gestor de sesión y el bloqueo no se tomaba —y sin bloqueo la
