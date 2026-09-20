@@ -106,10 +106,15 @@ struct Permiso
  * absolutas es lo que las hace un límite: escribir en `/usr/bin` pide root, así
  * que un programa del usuario no puede ponerse en el lugar de uno de éstos.
  */
-constexpr std::array<Permiso, 13> PERMITIDOS{{
+constexpr std::array<Permiso, 14> PERMITIDOS{{
     // El escritorio y lo que dibuja encima de todo.
     {"/usr/bin/vasak-desktop", {"zwlr_layer_shell_v1", nullptr}},
     {"/usr/bin/vasak-flare-daemon", {"zwlr_layer_shell_v1", nullptr}},
+    // El lanzador: centrado, encima de todo y con el teclado en exclusiva, que
+    // son las tres cosas que una ventana común no puede pedir. Sólo esto: las
+    // ventanas abiertas que va a listar se las pide a `vasak-desktop` por D-Bus
+    // —que ya tiene `foreign_toplevel`— justamente para no pedirlo acá.
+    {"/usr/bin/vasak-prism", {"zwlr_layer_shell_v1", nullptr}},
     // La superficie de selección tapa todo, panel incluido.
     {"/usr/bin/vasak-shot", {"zwlr_layer_shell_v1", nullptr}},
     {"/usr/bin/slurp", {"zwlr_layer_shell_v1", nullptr}},
