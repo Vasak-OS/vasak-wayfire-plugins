@@ -148,8 +148,8 @@ int main()
         vasak::Decision::PERMITIR, "la pantalla de bloqueo puede bloquear");
     comprobar(vasak::decidir("/usr/bin/vasak-session-manager", "ext_session_lock_manager_v1") ==
         vasak::Decision::NEGAR, "el greeter no bloquea: corre contra otro compositor");
-    comprobar(vasak::decidir("/usr/bin/grim", "zwlr_screencopy_manager_v1") ==
-        vasak::Decision::PERMITIR, "grim puede capturar");
+    comprobar(vasak::decidir("/usr/bin/vasak-shot", "zwlr_screencopy_manager_v1") ==
+        vasak::Decision::PERMITIR, "la herramienta de capturas puede capturar");
 
     // El portal es el camino por el que un programa de terceros pide la
     // pantalla con una pregunta de por medio. Negárselo rompe todo compartir
@@ -180,10 +180,19 @@ int main()
         vasak::Decision::NEGAR, "ni escribe teclas");
 
     // Estar en la lista no es ser de confianza para todo: cada fila dice lo que
-    // ese programa usa. Sin esto, `grim` —que cualquiera puede ejecutar— sería
-    // un pase libre a leer el portapapeles.
-    comprobar(vasak::decidir("/usr/bin/grim", "ext_data_control_manager_v1") ==
-        vasak::Decision::NEGAR, "grim captura pero no lee el portapapeles");
+    // ese programa usa.
+    comprobar(vasak::decidir("/usr/bin/vasak-shot", "ext_data_control_manager_v1") ==
+        vasak::Decision::NEGAR, "la herramienta de capturas no lee el portapapeles");
+
+    // Y `grim` ya no está. Estaba porque `vasak-shot` lo llamaba para tomar los
+    // píxeles, y como esta lista es por ejecutable y `grim` lo puede correr
+    // cualquiera, era el intermediario de todo el mundo: un guion de dos líneas
+    // capturaba la pantalla entera sin estar permitido. Medido en una sesión de
+    // verdad antes de sacarlo.
+    comprobar(vasak::decidir("/usr/bin/grim", "zwlr_screencopy_manager_v1") ==
+        vasak::Decision::NEGAR, "grim ya no es el intermediario de nadie");
+    comprobar(vasak::decidir("/usr/bin/grim", "ext_image_copy_capture_manager_v1") ==
+        vasak::Decision::NEGAR, "ni por el protocolo nuevo");
     comprobar(vasak::decidir("/usr/bin/vasak-desktop", "zwlr_screencopy_manager_v1") ==
         vasak::Decision::NEGAR, "el panel dibuja pero no captura");
 

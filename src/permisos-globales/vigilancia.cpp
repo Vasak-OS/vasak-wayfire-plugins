@@ -106,7 +106,13 @@ struct Permiso
  * absolutas es lo que las hace un límite: escribir en `/usr/bin` pide root, así
  * que un programa del usuario no puede ponerse en el lugar de uno de éstos.
  */
-constexpr std::array<Permiso, 14> PERMITIDOS{{
+/// El tamaño lo cuenta el compilador, y eso es a propósito.
+///
+/// Estaba escrito a mano —`std::array<Permiso, 14>`— y sacar una fila sin
+/// corregir el número dejaba una entrada vacía al final, con la ruta en
+/// `nullptr`. Las pruebas no fallaban con un mensaje: se caían con SIGSEGV al
+/// recorrerla. Con `to_array` no hay número que mantener.
+constexpr auto PERMITIDOS = std::to_array<Permiso>({
     // El escritorio y lo que dibuja encima de todo.
     {"/usr/bin/vasak-desktop", {"zwlr_layer_shell_v1", nullptr}},
     {"/usr/bin/vasak-flare-daemon", {"zwlr_layer_shell_v1", nullptr}},
@@ -115,8 +121,12 @@ constexpr std::array<Permiso, 14> PERMITIDOS{{
     // ventanas abiertas que va a listar se las pide a `vasak-desktop` por D-Bus
     // —que ya tiene `foreign_toplevel`— justamente para no pedirlo acá.
     {"/usr/bin/vasak-prism", {"zwlr_layer_shell_v1", nullptr}},
-    // La superficie de selección tapa todo, panel incluido.
-    {"/usr/bin/vasak-shot", {"zwlr_layer_shell_v1", nullptr}},
+    // La superficie de selección tapa todo, panel incluido, y desde que toma
+    // los píxeles por su cuenta también captura: ver el bloque de `grim` más
+    // abajo.
+    {"/usr/bin/vasak-shot",
+     {"zwlr_layer_shell_v1", "zwlr_screencopy_manager_v1",
+      "ext_image_copy_capture_manager_v1", "ext_output_image_capture_source_manager_v1", nullptr}},
     {"/usr/bin/slurp", {"zwlr_layer_shell_v1", nullptr}},
 
     // La pantalla de bloqueo, que es **un binario aparte** del gestor de
@@ -139,10 +149,20 @@ constexpr std::array<Permiso, 14> PERMITIDOS{{
     {"/usr/bin/vasak-press-and-hold",
      {"zwlr_layer_shell_v1", "zwp_virtual_keyboard_manager_v1", nullptr}},
 
-    // Los píxeles de la pantalla. `vasak-shot` no los toma: llama a `grim`.
-    {"/usr/bin/grim",
-     {"zwlr_screencopy_manager_v1", "zwlr_export_dmabuf_manager_v1",
-      "ext_image_copy_capture_manager_v1", "ext_output_image_capture_source_manager_v1", nullptr}},
+    // `grim` **no** está, y sacarlo es el punto de este cambio.
+    //
+    // Estaba porque `vasak-shot` no tomaba los píxeles: lo llamaba a él. Pero
+    // esta lista es por ejecutable y `grim` lo puede correr cualquiera, así que
+    // estar acá lo convertía en el intermediario de todo el mundo: un guion de
+    // dos líneas —`grim "$1"`— capturaba la pantalla entera sin estar
+    // permitido, medido en una sesión de verdad. El permiso de compartir
+    // pantalla se saltaba pidiéndoselo a la herramienta que sí lo tenía.
+    //
+    // Ahora `vasak-shot` habla `zwlr_screencopy` por su cuenta y `grim` queda
+    // como cualquier otro programa. Lo que eso cuesta, dicho de frente: `grim`
+    // a mano en una terminal deja de sacar capturas. Es el precio de que el
+    // permiso signifique algo, y queda la vía de escape de `permitidos_extra`
+    // para quien lo necesite en su equipo.
     // El portal, que es el camino por el que un programa de terceros pide la
     // pantalla **con una pregunta de por medio**. Negárselo rompería todo
     // compartir pantalla, que es lo contrario de lo que esto busca.
@@ -163,7 +183,7 @@ constexpr std::array<Permiso, 14> PERMITIDOS{{
     {"/usr/bin/wlsunset", {"zwlr_gamma_control_manager_v1", nullptr}},
     {"/usr/bin/wlopm", {"zwlr_output_power_manager_v1", nullptr}},
     {"/usr/bin/wlr-randr", {"zwlr_output_manager_v1", nullptr}},
-}};
+});
 
 /**
  * Lo que agrega la configuración. Ver `fijar_permitidos_extra`.

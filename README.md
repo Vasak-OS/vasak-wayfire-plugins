@@ -41,17 +41,21 @@ El plan era medir una semana y decidir con esos datos. Queda escrito por qué no
 |---|---|---|
 | `vasak-desktop` | `layer_shell` | el panel y el escritorio se dibujan encima |
 | `vasak-flare-daemon` | `layer_shell` | los carteles |
-| `vasak-shot`, `slurp` | `layer_shell` | la superficie de selección tapa todo |
+| `vasak-shot` | `layer_shell`, captura | la superficie de selección tapa todo, y los píxeles los toma él |
+| `slurp` | `layer_shell` | la superficie de selección tapa todo |
 | `vasak-session-manager`, `gtklock` | `session_lock` | la pantalla de bloqueo |
 | `vasak-press-and-hold` | `layer_shell`, `virtual_keyboard` | el selector se dibuja encima y escribe el carácter |
-| `grim` | captura (los cuatro) | los píxeles; `vasak-shot` no los toma, lo llama a él |
 | `xdg-desktop-portal-wlr` | captura (los cuatro) | el camino con pregunta de por medio |
 | `wl-copy`, `wl-paste` | `data_control`, selección primaria | copiar y pegar |
 | `wlsunset` | `gamma_control` | luz nocturna |
 | `wlopm` | `output_power` | apagar la pantalla |
 | `wlr-randr` | `output_manager` | configurar monitores |
 
-**Acota, no habilita.** Estar en la lista no le da nada a nadie: le deja pedir lo que ya sabíamos que usa. Por eso cada fila nombra sus protocolos y no «todos»: `grim` lo puede ejecutar cualquiera, así que si estar en la lista fuera un pase libre, sería el pase libre a leer el portapapeles.
+**Acota, no habilita.** Estar en la lista no le da nada a nadie: le deja pedir lo que ya sabíamos que usa. Por eso cada fila nombra sus protocolos y no «todos».
+
+**Y la lista es por ejecutable, que es su límite.** `grim` estuvo acá mientras `vasak-shot` lo llamaba para tomar los píxeles, y eso lo convertía en el intermediario de cualquiera: un guion de dos líneas —`grim "$1"`— capturaba la pantalla entera sin estar permitido. Medido en una sesión de verdad. Ahora `vasak-shot` habla el protocolo por su cuenta y `grim` salió de la lista, así que capturar a mano desde una terminal dejó de andar: es el precio de que el permiso signifique algo. Para el equipo de alguien que lo necesite está `permitidos_extra`.
+
+El mismo razonamiento vale para las demás filas: cada programa de la lista que alguien más pueda ejecutar es un intermediario posible para lo que esa fila le concede.
 
 **Lo que no le damos a nadie**: enumerar ventanas y títulos (`foreign_toplevel`, ambos), puntero virtual, inhibir atajos y `zwf_shell`. Ningún componente del escritorio los usa — el panel lista ventanas por el socket IPC de Wayfire, y `vasak-monitor` las cuenta con `ss -x`.
 
