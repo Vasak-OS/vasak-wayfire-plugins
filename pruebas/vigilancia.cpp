@@ -150,6 +150,15 @@ int main()
         vasak::Decision::NEGAR, "el greeter no bloquea: corre contra otro compositor");
     comprobar(vasak::decidir("/usr/bin/vasak-shot", "zwlr_screencopy_manager_v1") ==
         vasak::Decision::PERMITIR, "la herramienta de capturas puede capturar");
+    // Y por los `ext_*`, que son los reemplazos estandarizados de lo mismo.
+    // Darle sólo el `zwlr_` la dejaría sin capturar en cuanto el compositor
+    // deje de ofrecer el viejo, que es exactamente la clase de cambio que no
+    // avisa. Lo marcó la revisión.
+    comprobar(vasak::decidir("/usr/bin/vasak-shot", "ext_image_copy_capture_manager_v1") ==
+        vasak::Decision::PERMITIR, "también por el protocolo nuevo");
+    comprobar(
+        vasak::decidir("/usr/bin/vasak-shot", "ext_output_image_capture_source_manager_v1") ==
+        vasak::Decision::PERMITIR, "y puede elegir qué pantalla capturar");
 
     // El portal es el camino por el que un programa de terceros pide la
     // pantalla con una pregunta de por medio. Negárselo rompe todo compartir
