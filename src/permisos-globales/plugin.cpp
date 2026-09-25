@@ -161,7 +161,7 @@ class permisos_globales_t : public wf::plugin_interface_t
         pid_t pid = 0;
         uid_t uid = 0;
         gid_t gid = 0;
-        wl_client_get_credentials(const_cast<wl_client*>(cliente), &pid, &uid, &gid);
+        wl_client_get_credentials(cliente, &pid, &uid, &gid);
 
         // Lo que armó el propio compositor —Xwayland, sobre todo— llega con el
         // pid de Wayfire. Ver `es_plomeria_del_compositor`: negarle acá sería
