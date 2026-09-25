@@ -1,0 +1,166 @@
+# DIAGNÓSTICO TEMPORAL — se borra en el commit siguiente, no va al PR.
+name: Diagnóstico del escáner
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Hay token
+        id: token
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "::error::Sin token: el diagnóstico no puede correr."
+            exit 1
+          fi
+          echo "hay=true" >> "$GITHUB_OUTPUT"
+
+      - name: 'A1 · tests=pruebas'
+        if: steps.token.outputs.hay
+        continue-on-error: true
+        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
+        with:
+          args: >
+            -Dsonar.organization=vasakos
+            -Dsonar.projectKey=Vasak-OS_${{ github.event.repository.name }}
+            -Dsonar.exclusions=**/build/**
+            -Dsonar.tests=pruebas
+            -Dsonar.log.level=DEBUG
+
+      - name: limpiar
+        if: steps.token.outputs.hay
+        run: |
+          git checkout -- .
+          git clean -xfdq
+
+      - name: 'A2 · tests=pruebas + test.inclusions'
+        if: steps.token.outputs.hay
+        continue-on-error: true
+        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
+        with:
+          args: >
+            -Dsonar.organization=vasakos
+            -Dsonar.projectKey=Vasak-OS_${{ github.event.repository.name }}
+            -Dsonar.exclusions=**/build/**
+            -Dsonar.tests=pruebas
+            -Dsonar.test.inclusions=**/pruebas/**
+            -Dsonar.log.level=DEBUG
+
+      - name: limpiar
+        if: steps.token.outputs.hay
+        run: |
+          git checkout -- .
+          git clean -xfdq
+
+      - name: 'C · preparar cobertura gcov'
+        if: steps.token.outputs.hay
+        run: |
+          g++ -std=c++20 --coverage -c -I src/permisos-globales \
+            -o pruebas-vigilancia.o pruebas/vigilancia.cpp
+          g++ -std=c++20 --coverage -c -I src/permisos-globales \
+            -o src-vigilancia.o src/permisos-globales/vigilancia.cpp
+          g++ --coverage -o pruebas-vigilancia pruebas-vigilancia.o src-vigilancia.o
+          ./pruebas-vigilancia | tail -2
+          gcov -o . src-vigilancia.o 2>&1 | head -6
+          echo '--- .gcov:'
+          ls -1 *.gcov 2>&1 | head
+          echo '--- primeras lineas del gcov:'
+          head -12 src-vigilancia.cpp.gcov 2>/dev/null || head -12 *.gcov 2>/dev/null
+
+      - name: 'C · tests=pruebas + gcov'
+        if: steps.token.outputs.hay
+        continue-on-error: true
+        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
+        with:
+          args: >
+            -Dsonar.organization=vasakos
+            -Dsonar.projectKey=Vasak-OS_${{ github.event.repository.name }}
+            -Dsonar.exclusions=**/build/**
+            -Dsonar.tests=pruebas
+            -Dsonar.cfamily.gcov.reportsPath=${{ github.workspace }}
+            -Dsonar.log.level=DEBUG
+
+      - name: 'el assertion, tal cual va a quedar'
+        if: always() && steps.token.outputs.hay
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          informe=.scannerwork/report-task.txt
+          if [ ! -s "$informe" ]; then
+            echo "::error::El escáner terminó sin dejar informe: no publicó ningún análisis."
+            exit 1
+          fi
+          tarea=$(sed -n 's/^ceTaskId=//p' "$informe")
+          if [ -z "$tarea" ]; then
+            echo "::error::El informe no trae ceTaskId: el escáner no llegó a mandar nada."
+            exit 1
+          fi
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            donde="pullRequest=${{ github.event.pull_request.number }}"
+          else
+            donde="branch=${{ github.ref_name }}"
+          fi
+          estado=""
+          for intento in $(seq 1 30); do
+            tarea_json=$(curl -fsS -H "Authorization: Bearer $SONAR_TOKEN" \
+              "https://sonarcloud.io/api/ce/task?id=$tarea" || echo "")
+            echo "--- intento $intento: $(printf '%s' "$tarea_json" | head -c 400)"
+            estado=$(printf '%s' "$tarea_json" | sed -n 's/.*"status":"\([A-Z]*\)".*/\1/p')
+            case "$estado" in
+              SUCCESS | FAILED) break ;;
+              "") echo "El servidor no contesta (intento $intento de 30)." ;;
+            esac
+            sleep 10
+          done
+          if [ "$estado" != SUCCESS ]; then
+            echo "::error::El análisis no llegó a procesarse (estado: ${estado:-sin respuesta})."
+            exit 1
+          fi
+          distribucion=$(curl -fsS \
+            "https://sonarcloud.io/api/measures/component?component=Vasak-OS_${{ github.event.repository.name }}&$donde&metricKeys=ncloc_language_distribution" \
+            | sed -n 's/.*ncloc_language_distribution[^"]*"\(.*\)".*/\1/p' | sed 's/\\u003d/=/g')
+          echo "--- distribucion: [$distribucion]"
+          case "$distribucion" in
+            *cpp=[1-9]*)
+              echo "::notice::El análisis ve: $distribucion"
+              ;;
+            *)
+              echo "::error::El análisis se publicó sin C++: ${distribucion:-sin distribucion de lineas}."
+              exit 1
+              ;;
+          esac
+
+      - name: 'cómo quedó el panel'
+        if: always() && steps.token.outputs.hay
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          clave="Vasak-OS_${{ github.event.repository.name }}"
+          echo '=== main'
+          curl -fsS -H "Authorization: Bearer $SONAR_TOKEN" \
+            "https://sonarcloud.io/api/measures/component?component=$clave&branch=main&metricKeys=ncloc,ncloc_language_distribution,coverage" | head -c 800
+          echo
+          echo '=== PR'
+          curl -fsS -H "Authorization: Bearer $SONAR_TOKEN" \
+            "https://sonarcloud.io/api/measures/component?component=$clave&pullRequest=${{ github.event.pull_request.number }}&metricKeys=ncloc,ncloc_language_distribution,coverage" | head -c 800
+          echo
+          echo '=== árbol del PR'
+          curl -fsS -H "Authorization: Bearer $SONAR_TOKEN" \
+            "https://sonarcloud.io/api/measures/component_tree?component=$clave&pullRequest=${{ github.event.pull_request.number }}&metricKeys=ncloc&ps=100" | head -c 2000
+          echo
+          echo '=== árbol de main'
+          curl -fsS -H "Authorization: Bearer $SONAR_TOKEN" \
+            "https://sonarcloud.io/api/measures/component_tree?component=$clave&branch=main&metricKeys=ncloc&ps=100" | head -c 2000

@@ -36,7 +36,10 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      # Clavado al commit como en el compartido. La etiqueta `v4` es móvil —
+      # hoy apunta a la v4.4.0— y un tag que se mueve bajo los pies es una
+      # dependencia que cambia sin que cambie el archivo.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Compilar y correr las pruebas
         run: |
@@ -48,19 +51,29 @@ jobs:
 
   # ── SonarQube Cloud ──────────────────────────────────────────────────────
   #
-  # Trabajo aparte y no un paso de `pruebas`, por la misma razón que en el
-  # compartido: el análisis no necesita el plugin ni el compilador, y si
-  # compartiera trabajo con las pruebas, un problema del análisis frenaría un
-  # merge cuyo código está bien y que las pruebas ya dieron por bueno.
+  # Trabajo aparte y no un paso de `pruebas`, pero no por el análisis. Lo único
+  # que exige el ruleset «Proteger main» de la organización es `pruebas`, y
+  # `SonarCloud` no es un chequeo requerido en ninguno de los 49 repositorios:
+  # que este trabajo se caiga no frena ningún merge. Lo que sí evita es que el
+  # rojo del análisis y el de las pruebas terminen en el mismo paso, donde no
+  # se sabe cuál de los dos fue.
   #
-  # Es el único análisis de C++ de la organización, y va **sin base de
-  # compilación** a propósito. Generarla con meson pediría los encabezados de
-  # Wayfire 0.11 —justo lo que arriba se explica que no hay en un runner de
-  # Ubuntu— y entonces el análisis dependería de poder compilar el plugin, que
-  # este workflow no compila y no va a empezar a compilar. SonarQube Cloud
-  # analiza el C++ sin base de compilación en modo AutoConfig, así que alcanza
-  # con correr el escáner. Lo que se pierde es resolver los `#include` de
-  # Wayfire, que el análisis reporta como no resueltos sin cortar nada.
+  # Va **sin base de compilación** a propósito. Generarla con meson pediría los
+  # encabezados de Wayfire 0.11 —justo lo que arriba se explica que no hay en
+  # un runner de Ubuntu— y entonces el análisis dependería de poder compilar el
+  # plugin, que este workflow no compila y no va a empezar a compilar. En modo
+  # AutoConfig eso no hace falta: cada `.cpp` del ámbito se analiza por separado
+  # y sin base de compilación.
+  #
+  # Lo que sí se pierde, y conviene no vender como una comodidad, es el
+  # analizador de tainted data —apagado entero en AutoConfig— y 27 reglas que
+  # en AutoConfig no corren, entre ellas S2076, S2078 y S2083, que son las de
+  # inyección de comandos y de rutas. Para un plugin cuya función es decidir qué
+  # protocolos privilegiados anuncia el compositor, dejar de revisar inyección es
+  # perder justo lo que este plugin existe para no tener. No es una pérdida
+  # propia de este camino: la app de SonarSource analiza este mismo repositorio
+  # sin base de compilación también, así que el mismo límite corre de las dos
+  # partes. Lo que cambia es que ahora el análisis se puede pedir.
   sonar:
     runs-on: ubuntu-latest
     # Sólo lectura: lee el repositorio y manda el resultado a Sonar. No
@@ -100,235 +113,100 @@ jobs:
           # La clave del proyecto sigue la forma que usa SonarQube Cloud al
           # importar desde GitHub, que es la que ya usan los proyectos de antes.
           #
-          # Las pruebas se declaran como pruebas. Si no, Sonar las cuenta como
-          # código sin probar —nadie prueba las pruebas— y la cobertura del
-          # código nuevo se hunde justo en el PR que más pruebas suma. El
-          # directorio de pruebas acá se llama `pruebas`, no `tests`.
+          # `sonar.tests` apunta al directorio de las pruebas, no a `.`. Con `.`
+          # no se estaba declarando «las pruebas están en la raíz»: se estaba
+          # diciendo que el proyecto entero es código de prueba, y como el
+          # analizador de C/C++ **ignora** lo que está en `sonar.tests`, el
+          # escáner no veía un solo `.cpp` del plugin. Cero unidades de
+          # compilación, tres archivos indexados y un paso en verde: el panel
+          # dejaba de reflejar el código sin que nadie lo notara. Apuntarlo a
+          # `pruebas` deja el C++ adentro y las pruebas afuera, que es lo que
+          # se quería desde el principio: que el panel no cuente las pruebas
+          # como código sin probar. El directorio se llama `pruebas`, no
+          # `tests`.
           #
           # `build/` es el directorio de meson, el mismo que está en el
           # `.gitignore`: el escáner no lee el `.gitignore`, así que hay que
-          # excluirlo aparte o contaría las pruebas como código.
+          # excluirlo aparte o contaría las pruebas como código. `pruebas/` ya
+          # no hace falta en las exclusiones porque `sonar.tests` ya lo saca
+          # del código principal.
           #
           # No hay `sonar.javascript.lcov.reportPaths` como en el compartido:
           # acá no hay Bun ni cobertura que reportar.
           args: >
             -Dsonar.organization=vasakos
             -Dsonar.projectKey=Vasak-OS_${{ github.event.repository.name }}
-            -Dsonar.exclusions=**/build/**,**/pruebas/**
-            -Dsonar.tests=.
-            -Dsonar.test.inclusions=**/pruebas/**
-            -Dsonar.test.exclusions=**/build/**
+            -Dsonar.exclusions=**/build/**
+            -Dsonar.tests=pruebas
 
-  # ── DIAGNÓSTICO TEMPORAL ────────────────────────────────────────────────
-  #
-  # Esto no va al PR: se borra en el commit siguiente. La pregunta que
-  # responde es por qué el trabajo `sonar` da 0 unidades de compilación.
-  diag:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    env:
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-
-      - name: Hay token
-        id: token
+      # El escáner no crea ningún check ni ningún estado: sale en verde si
+      # termina, haya visto algo o no. Y su salida no se puede leer desde otro
+      # paso —`RUNNER_STEP_LOG` viene vacío y la acción no expone salidas—, así
+      # que lo que se afirma acá es lo único que quedó a mano: que hubo un
+      # análisis, que el servidor lo aceptó y que en ese análisis hay C++.
+      #
+      # Sin base de compilación esto no es una formalidad: el modo AutoConfig
+      # analiza cada `.cpp` del ámbito por separado, de modo que «no hay C++ en
+      # el ámbito» y «hay C++ pero el analizador lo ignoró» se ven igual desde
+      # afuera, y las dos son el mismo desastre para el panel. Antes de que
+      # este paso existiera, un análisis que no veía el plugin publicaba igual
+      # y dejaba la rama `main` del proyecto describiendo otro proyecto.
+      #
+      # La espera es acotada y el corte es explícito: si el servidor no
+      # contesta, esto dice que no contestó, en vez de dar por buena un análisis
+      # que nadie llegó a mirar.
+      - name: El análisis miró algo
+        if: success() && steps.token.outputs.hay == 'true'
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          if [ -z "$SONAR_TOKEN" ]; then
-            echo "::error::Sin token: el diagnóstico no puede correr."
+          informe=.scannerwork/report-task.txt
+          if [ ! -s "$informe" ]; then
+            echo "::error::El escáner terminó sin dejar informe: no publicó ningún análisis."
             exit 1
           fi
-          echo "hay=true" >> "$GITHUB_OUTPUT"
-
-      - name: 1 · tal cual
-        if: steps.token.outputs.hay
-        continue-on-error: true
-        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
-        with:
-          args: >
-            -Dsonar.organization=vasakos
-            -Dsonar.projectKey=Vasak-OS_${{ github.event.repository.name }}
-            -Dsonar.exclusions=**/build/**,**/pruebas/**
-            -Dsonar.tests=.
-            -Dsonar.test.inclusions=**/pruebas/**
-            -Dsonar.test.exclusions=**/build/**
-            -Dsonar.log.level=DEBUG
-
-      - name: '¿el log del paso anterior es legible desde acá?'
-        if: steps.token.outputs.hay
-        run: |
-          echo "RUNNER_STEP_LOG=$RUNNER_STEP_LOG"
-          ls -l "$RUNNER_STEP_LOG" 2>&1 || true
-          echo "--- ¿'compilation units' en el log de ESTE paso?"
-          grep -c 'compilation units' "$RUNNER_STEP_LOG" || echo "0 coincidencias"
-          echo "--- ¿'EXECUTION' o 'ANALYSIS SUCCESSFUL'?"
-          grep -cE 'EXECUTION|ANALYSIS SUCCESSFUL' "$RUNNER_STEP_LOG" || echo "0 coincidencias"
-          echo "--- .scannerwork:"
-          find .scannerwork -type f 2>&1 | head -40
-          echo "--- report-task.txt:"
-          cat .scannerwork/report-task.txt 2>&1 | head -20
-          echo "--- logs o dumps sueltos:"
-          find . -maxdepth 2 \( -name '*.log' -o -name '*.dump' \) 2>/dev/null | head -20
-
-      - name: limpiar
-        if: steps.token.outputs.hay
-        run: |
-          git checkout -- .
-          git clean -xfdq
-
-      - name: 2 · sin sonar.tests
-        if: steps.token.outputs.hay
-        continue-on-error: true
-        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
-        with:
-          args: >
-            -Dsonar.organization=vasakos
-            -Dsonar.projectKey=Vasak-OS_${{ github.event.repository.name }}
-            -Dsonar.exclusions=**/build/**
-            -Dsonar.log.level=DEBUG
-
-      - name: limpiar
-        if: steps.token.outputs.hay
-        run: |
-          git checkout -- .
-          git clean -xfdq
-
-      - name: 3 · sin exclusiones
-        if: steps.token.outputs.hay
-        continue-on-error: true
-        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
-        with:
-          args: >
-            -Dsonar.organization=vasakos
-            -Dsonar.projectKey=Vasak-OS_${{ github.event.repository.name }}
-            -Dsonar.log.level=DEBUG
-
-      - name: limpiar
-        if: steps.token.outputs.hay
-        run: |
-          git checkout -- .
-          git clean -xfdq
-
-      - name: 4 · sources=src
-        if: steps.token.outputs.hay
-        continue-on-error: true
-        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
-        with:
-          args: >
-            -Dsonar.organization=vasakos
-            -Dsonar.projectKey=Vasak-OS_${{ github.event.repository.name }}
-            -Dsonar.sources=src
-            -Dsonar.exclusions=**/build/**,**/pruebas/**
-            -Dsonar.tests=.
-            -Dsonar.test.inclusions=**/pruebas/**
-            -Dsonar.test.exclusions=**/build/**
-            -Dsonar.log.level=DEBUG
-
-      - name: limpiar
-        if: steps.token.outputs.hay
-        run: |
-          git checkout -- .
-          git clean -xfdq
-
-      - name: '5 · preparar: sin meson.build'
-        if: steps.token.outputs.hay
-        run: |
-          git ls-files | grep 'meson\.build$' | while read -r f; do mv "$f" "$f.bak"; done
-          git status --porcelain
-
-      - name: 5 · sin meson.build
-        if: steps.token.outputs.hay
-        continue-on-error: true
-        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
-        with:
-          args: >
-            -Dsonar.organization=vasakos
-            -Dsonar.projectKey=Vasak-OS_${{ github.event.repository.name }}
-            -Dsonar.exclusions=**/build/**,**/pruebas/**
-            -Dsonar.tests=.
-            -Dsonar.test.inclusions=**/pruebas/**
-            -Dsonar.test.exclusions=**/build/**
-            -Dsonar.log.level=DEBUG
-
-      - name: limpiar
-        if: steps.token.outputs.hay
-        run: |
-          git ls-files --others --exclude-standard | grep '\.bak$' | while read -r f; do mv "$f" "${f%.bak}"; done
-          git checkout -- .
-          git clean -xfdq
-          git status --porcelain
-
-      - name: '6 · preparar: base de compilación a mano'
-        if: steps.token.outputs.hay
-        run: |
-          cat > compile_commands.json <<JSON
-          [
-            {
-              "directory": "$GITHUB_WORKSPACE",
-              "command": "g++ -std=c++20 -I src/permisos-globales -c src/permisos-globales/vigilancia.cpp",
-              "file": "$GITHUB_WORKSPACE/src/permisos-globales/vigilancia.cpp"
-            }
-          ]
-          JSON
-          cat compile_commands.json
-
-      - name: 6 · base de compilación a mano
-        if: steps.token.outputs.hay
-        continue-on-error: true
-        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
-        with:
-          args: >
-            -Dsonar.organization=vasakos
-            -Dsonar.projectKey=Vasak-OS_${{ github.event.repository.name }}
-            -Dsonar.exclusions=**/build/**,**/pruebas/**
-            -Dsonar.tests=.
-            -Dsonar.test.inclusions=**/pruebas/**
-            -Dsonar.test.exclusions=**/build/**
-            -Dsonar.log.level=DEBUG
-
-      - name: limpiar
-        if: steps.token.outputs.hay
-        run: |
-          git checkout -- .
-          git clean -xfdq
-
-      - name: '7 · preparar: cobertura gcov'
-        if: steps.token.outputs.hay
-        run: |
-          g++ -std=c++20 --coverage -c -I src/permisos-globales \
-            -o pruebas-vigilancia.o pruebas/vigilancia.cpp
-          g++ -std=c++20 --coverage -c -I src/permisos-globales \
-            -o src-vigilancia.o src/permisos-globales/vigilancia.cpp
-          g++ --coverage -o pruebas-vigilancia pruebas-vigilancia.o src-vigilancia.o
-          ./pruebas-vigilancia | tail -3
-          gcov -o . src-vigilancia.o 2>&1 | head -10
-          ls -1 *.gcov 2>&1 | head
-
-      - name: 7 · cobertura gcov
-        if: steps.token.outputs.hay
-        continue-on-error: true
-        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
-        with:
-          args: >
-            -Dsonar.organization=vasakos
-            -Dsonar.projectKey=Vasak-OS_${{ github.event.repository.name }}
-            -Dsonar.exclusions=**/build/**,**/pruebas/**
-            -Dsonar.tests=.
-            -Dsonar.test.inclusions=**/pruebas/**
-            -Dsonar.test.exclusions=**/build/**
-            -Dsonar.cfamily.gcov.reportsPath=${{ github.workspace }}
-            -Dsonar.log.level=DEBUG
-
-      - name: cómo quedó el panel
-        if: always() && steps.token.outputs.hay
-        run: |
-          clave="Vasak-OS_${{ github.event.repository.name }}"
-          for i in $(seq 1 20); do
-            cuerpo=$(curl -fsS "https://sonarcloud.io/api/measures/component?component=$clave&pullRequest=${{ github.event.pull_request.number }}&metricKeys=ncloc,ncloc_language_distribution,coverage" || echo "")
-            if [ -n "$cuerpo" ]; then echo "$cuerpo"; break; fi
-            echo "aún no está ($i)"; sleep 15
+          tarea=$(sed -n 's/^ceTaskId=//p' "$informe")
+          if [ -z "$tarea" ]; then
+            echo "::error::El informe no trae ceTaskId: el escáner no llegó a mandar nada."
+            exit 1
+          fi
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            donde="pullRequest=${{ github.event.pull_request.number }}"
+          else
+            donde="branch=${{ github.ref_name }}"
+          fi
+          estado=""
+          for intento in $(seq 1 30); do
+            tarea_json=$(curl -fsS -H "Authorization: Bearer $SONAR_TOKEN" \
+              "https://sonarcloud.io/api/ce/task?id=$tarea" || echo "")
+            estado=$(printf '%s' "$tarea_json" | sed -n 's/.*"status":"\([A-Z]*\)".*/\1/p')
+            case "$estado" in
+              SUCCESS | FAILED) break ;;
+              "") echo "El servidor no contesta (intento $intento de 30)." ;;
+            esac
+            sleep 10
           done
+          if [ "$estado" != SUCCESS ]; then
+            echo "::error::El análisis no llegó a procesarse (estado: ${estado:-sin respuesta})."
+            exit 1
+          fi
+          # La tarea terminó en SUCCESS, así que la rama ya apunta a este
+          # análisis y no al anterior: leer la medida ahora no mira datos viejos.
+          # Se reintenta un par de veces porque entre que la tarea termina y que
+          # la medida aparece hay un instante, y en ese instante «todavía no
+          # está» se parece demasiado a «no hay C++».
+          for intento in $(seq 1 3); do
+            cuerpo=$(curl -fsS \
+              "https://sonarcloud.io/api/measures/component?component=Vasak-OS_${{ github.event.repository.name }}&$donde&metricKeys=ncloc_language_distribution" \
+              || echo "")
+            cpp=$(printf '%s' "$cuerpo" | sed 's/\\u003d/=/g' \
+              | grep -o 'cpp=[0-9]\+' | head -1 | cut -d= -f2)
+            if [ "${cpp:-0}" -gt 0 ] 2>/dev/null; then
+              echo "::notice::El análisis ve $cpp líneas de C++."
+              exit 0
+            fi
+            echo "Todavía sin C++ publicado (intento $intento de 3)."
+            sleep 10
+          done
+          echo "::error::El análisis se publicó sin C++: el panel ya no describe este plugin."
+          exit 1
