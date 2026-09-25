@@ -159,6 +159,9 @@ jobs:
         if: success() && steps.token.outputs.hay == 'true'
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          EVENTO: ${{ github.event_name }}
+          NUMERO_PR: ${{ github.event.pull_request.number }}
+          RAMA: ${{ github.ref_name }}
         run: |
           informe=.scannerwork/report-task.txt
           if [ ! -s "$informe" ]; then
@@ -170,10 +173,10 @@ jobs:
             echo "::error::El informe no trae ceTaskId: el escáner no llegó a mandar nada."
             exit 1
           fi
-          if [ "${{ github.event_name }}" = pull_request ]; then
-            donde="pullRequest=${{ github.event.pull_request.number }}"
+          if [ "$EVENTO" = pull_request ]; then
+            donde="pullRequest=$NUMERO_PR"
           else
-            donde="branch=${{ github.ref_name }}"
+            donde="branch=$RAMA"
           fi
           estado=""
           for intento in $(seq 1 30); do
