@@ -118,3 +118,217 @@ jobs:
             -Dsonar.tests=.
             -Dsonar.test.inclusions=**/pruebas/**
             -Dsonar.test.exclusions=**/build/**
+
+  # ── DIAGNÓSTICO TEMPORAL ────────────────────────────────────────────────
+  #
+  # Esto no va al PR: se borra en el commit siguiente. La pregunta que
+  # responde es por qué el trabajo `sonar` da 0 unidades de compilación.
+  diag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Hay token
+        id: token
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "::error::Sin token: el diagnóstico no puede correr."
+            exit 1
+          fi
+          echo "hay=true" >> "$GITHUB_OUTPUT"
+
+      - name: 1 · tal cual
+        if: steps.token.outputs.hay
+        continue-on-error: true
+        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
+        with:
+          args: >
+            -Dsonar.organization=vasakos
+            -Dsonar.projectKey=Vasak-OS_${{ github.event.repository.name }}
+            -Dsonar.exclusions=**/build/**,**/pruebas/**
+            -Dsonar.tests=.
+            -Dsonar.test.inclusions=**/pruebas/**
+            -Dsonar.test.exclusions=**/build/**
+            -Dsonar.log.level=DEBUG
+
+      - name: '¿el log del paso anterior es legible desde acá?'
+        if: steps.token.outputs.hay
+        run: |
+          echo "RUNNER_STEP_LOG=$RUNNER_STEP_LOG"
+          ls -l "$RUNNER_STEP_LOG" 2>&1 || true
+          echo "--- ¿'compilation units' en el log de ESTE paso?"
+          grep -c 'compilation units' "$RUNNER_STEP_LOG" || echo "0 coincidencias"
+          echo "--- ¿'EXECUTION' o 'ANALYSIS SUCCESSFUL'?"
+          grep -cE 'EXECUTION|ANALYSIS SUCCESSFUL' "$RUNNER_STEP_LOG" || echo "0 coincidencias"
+          echo "--- .scannerwork:"
+          find .scannerwork -type f 2>&1 | head -40
+          echo "--- report-task.txt:"
+          cat .scannerwork/report-task.txt 2>&1 | head -20
+          echo "--- logs o dumps sueltos:"
+          find . -maxdepth 2 \( -name '*.log' -o -name '*.dump' \) 2>/dev/null | head -20
+
+      - name: limpiar
+        if: steps.token.outputs.hay
+        run: |
+          git checkout -- .
+          git clean -xfdq
+
+      - name: 2 · sin sonar.tests
+        if: steps.token.outputs.hay
+        continue-on-error: true
+        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
+        with:
+          args: >
+            -Dsonar.organization=vasakos
+            -Dsonar.projectKey=Vasak-OS_${{ github.event.repository.name }}
+            -Dsonar.exclusions=**/build/**
+            -Dsonar.log.level=DEBUG
+
+      - name: limpiar
+        if: steps.token.outputs.hay
+        run: |
+          git checkout -- .
+          git clean -xfdq
+
+      - name: 3 · sin exclusiones
+        if: steps.token.outputs.hay
+        continue-on-error: true
+        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
+        with:
+          args: >
+            -Dsonar.organization=vasakos
+            -Dsonar.projectKey=Vasak-OS_${{ github.event.repository.name }}
+            -Dsonar.log.level=DEBUG
+
+      - name: limpiar
+        if: steps.token.outputs.hay
+        run: |
+          git checkout -- .
+          git clean -xfdq
+
+      - name: 4 · sources=src
+        if: steps.token.outputs.hay
+        continue-on-error: true
+        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
+        with:
+          args: >
+            -Dsonar.organization=vasakos
+            -Dsonar.projectKey=Vasak-OS_${{ github.event.repository.name }}
+            -Dsonar.sources=src
+            -Dsonar.exclusions=**/build/**,**/pruebas/**
+            -Dsonar.tests=.
+            -Dsonar.test.inclusions=**/pruebas/**
+            -Dsonar.test.exclusions=**/build/**
+            -Dsonar.log.level=DEBUG
+
+      - name: limpiar
+        if: steps.token.outputs.hay
+        run: |
+          git checkout -- .
+          git clean -xfdq
+
+      - name: '5 · preparar: sin meson.build'
+        if: steps.token.outputs.hay
+        run: |
+          git ls-files | grep 'meson\.build$' | while read -r f; do mv "$f" "$f.bak"; done
+          git status --porcelain
+
+      - name: 5 · sin meson.build
+        if: steps.token.outputs.hay
+        continue-on-error: true
+        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
+        with:
+          args: >
+            -Dsonar.organization=vasakos
+            -Dsonar.projectKey=Vasak-OS_${{ github.event.repository.name }}
+            -Dsonar.exclusions=**/build/**,**/pruebas/**
+            -Dsonar.tests=.
+            -Dsonar.test.inclusions=**/pruebas/**
+            -Dsonar.test.exclusions=**/build/**
+            -Dsonar.log.level=DEBUG
+
+      - name: limpiar
+        if: steps.token.outputs.hay
+        run: |
+          git ls-files --others --exclude-standard | grep '\.bak$' | while read -r f; do mv "$f" "${f%.bak}"; done
+          git checkout -- .
+          git clean -xfdq
+          git status --porcelain
+
+      - name: '6 · preparar: base de compilación a mano'
+        if: steps.token.outputs.hay
+        run: |
+          cat > compile_commands.json <<JSON
+          [
+            {
+              "directory": "$GITHUB_WORKSPACE",
+              "command": "g++ -std=c++20 -I src/permisos-globales -c src/permisos-globales/vigilancia.cpp",
+              "file": "$GITHUB_WORKSPACE/src/permisos-globales/vigilancia.cpp"
+            }
+          ]
+          JSON
+          cat compile_commands.json
+
+      - name: 6 · base de compilación a mano
+        if: steps.token.outputs.hay
+        continue-on-error: true
+        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
+        with:
+          args: >
+            -Dsonar.organization=vasakos
+            -Dsonar.projectKey=Vasak-OS_${{ github.event.repository.name }}
+            -Dsonar.exclusions=**/build/**,**/pruebas/**
+            -Dsonar.tests=.
+            -Dsonar.test.inclusions=**/pruebas/**
+            -Dsonar.test.exclusions=**/build/**
+            -Dsonar.log.level=DEBUG
+
+      - name: limpiar
+        if: steps.token.outputs.hay
+        run: |
+          git checkout -- .
+          git clean -xfdq
+
+      - name: '7 · preparar: cobertura gcov'
+        if: steps.token.outputs.hay
+        run: |
+          g++ -std=c++20 --coverage -c -I src/permisos-globales \
+            -o pruebas-vigilancia.o pruebas/vigilancia.cpp
+          g++ -std=c++20 --coverage -c -I src/permisos-globales \
+            -o src-vigilancia.o src/permisos-globales/vigilancia.cpp
+          g++ --coverage -o pruebas-vigilancia pruebas-vigilancia.o src-vigilancia.o
+          ./pruebas-vigilancia | tail -3
+          gcov -o . src-vigilancia.o 2>&1 | head -10
+          ls -1 *.gcov 2>&1 | head
+
+      - name: 7 · cobertura gcov
+        if: steps.token.outputs.hay
+        continue-on-error: true
+        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
+        with:
+          args: >
+            -Dsonar.organization=vasakos
+            -Dsonar.projectKey=Vasak-OS_${{ github.event.repository.name }}
+            -Dsonar.exclusions=**/build/**,**/pruebas/**
+            -Dsonar.tests=.
+            -Dsonar.test.inclusions=**/pruebas/**
+            -Dsonar.test.exclusions=**/build/**
+            -Dsonar.cfamily.gcov.reportsPath=${{ github.workspace }}
+            -Dsonar.log.level=DEBUG
+
+      - name: cómo quedó el panel
+        if: always() && steps.token.outputs.hay
+        run: |
+          clave="Vasak-OS_${{ github.event.repository.name }}"
+          for i in $(seq 1 20); do
+            cuerpo=$(curl -fsS "https://sonarcloud.io/api/measures/component?component=$clave&pullRequest=${{ github.event.pull_request.number }}&metricKeys=ncloc,ncloc_language_distribution,coverage" || echo "")
+            if [ -n "$cuerpo" ]; then echo "$cuerpo"; break; fi
+            echo "aún no está ($i)"; sleep 15
+          done
