@@ -37,7 +37,7 @@ jobs:
             -Dsonar.organization=vasakos
             -Dsonar.projectKey=Vasak-OS_${{ github.event.repository.name }}
             -Dsonar.sources=.
-            -Dsonar.exclusions=**/build/**
+            -Dsonar.exclusions=**/build/**,**/pruebas/**
             -Dsonar.tests=pruebas
             -Dsonar.log.level=DEBUG
 
@@ -68,7 +68,7 @@ jobs:
             -Dsonar.organization=vasakos
             -Dsonar.projectKey=Vasak-OS_${{ github.event.repository.name }}
             -Dsonar.sources=.
-            -Dsonar.exclusions=**/build/**,**/*.gcov,**/*.gcda,**/*.gcno,**/*.o
+            -Dsonar.exclusions=**/build/**,**/pruebas/**,**/*.gcov,**/*.gcda,**/*.gcno,**/*.o
             -Dsonar.tests=pruebas
             -Dsonar.cfamily.gcov.reportsPath=${{ github.workspace }}
             -Dsonar.log.level=DEBUG
