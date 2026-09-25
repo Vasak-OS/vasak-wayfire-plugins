@@ -14,6 +14,13 @@
 # Lo que sí se comprueba es lo único que decide algo: `vigilancia.cpp`. Está
 # separado del enganche con Wayfire justamente para esto — no incluye ni un
 # encabezado de Wayland, así que compila y corre en un runner pelado.
+#
+# El paso de Sonar sí está, y está escrito acá en vez de heredado del
+# compartido. El compartido lo trae en un trabajo que además instala Bun, corre
+# `bun install` y saca la cobertura del frontend: acá no hay nada de eso que sea
+# cierto, y llamarlo para conseguir un paso de análisis sería arrastrar tres
+# pasos muertos. Lo que se copia son los `args` y el token, que son pocas
+# líneas y se leen.
 name: CI
 
 on:
@@ -38,3 +45,76 @@ jobs:
             -o pruebas-vigilancia \
             pruebas/vigilancia.cpp src/permisos-globales/vigilancia.cpp
           ./pruebas-vigilancia
+
+  # ── SonarQube Cloud ──────────────────────────────────────────────────────
+  #
+  # Trabajo aparte y no un paso de `pruebas`, por la misma razón que en el
+  # compartido: el análisis no necesita el plugin ni el compilador, y si
+  # compartiera trabajo con las pruebas, un problema del análisis frenaría un
+  # merge cuyo código está bien y que las pruebas ya dieron por bueno.
+  #
+  # Es el único análisis de C++ de la organización, y va **sin base de
+  # compilación** a propósito. Generarla con meson pediría los encabezados de
+  # Wayfire 0.11 —justo lo que arriba se explica que no hay en un runner de
+  # Ubuntu— y entonces el análisis dependería de poder compilar el plugin, que
+  # este workflow no compila y no va a empezar a compilar. SonarQube Cloud
+  # analiza el C++ sin base de compilación en modo AutoConfig, así que alcanza
+  # con correr el escáner. Lo que se pierde es resolver los `#include` de
+  # Wayfire, que el análisis reporta como no resueltos sin cortar nada.
+  sonar:
+    runs-on: ubuntu-latest
+    # Sólo lectura: lee el repositorio y manda el resultado a Sonar. No
+    # comenta, no etiqueta, no publica.
+    permissions:
+      contents: read
+    steps:
+      # Sin `SONAR_TOKEN` se saltea y lo dice, en vez de fallar: un PR desde
+      # un fork no recibe secretos, y un repositorio al que todavía no se le
+      # dio el token tampoco. Es la misma propiedad que tiene el compartido, y
+      # es la que hace que este trabajo no pueda romper un PR ajeno.
+      - name: Hay token
+        id: token
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -n "$SONAR_TOKEN" ]; then
+            echo "hay=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Sin SONAR_TOKEN: se saltea el análisis."
+          fi
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        if: steps.token.outputs.hay == 'true'
+        with:
+          persist-credentials: false
+          # Sonar asigna cada línea a su commit para saber qué es código nuevo,
+          # y para eso necesita el historial entero.
+          fetch-depth: 0
+
+      - name: Análisis
+        if: steps.token.outputs.hay == 'true'
+        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          # La clave del proyecto sigue la forma que usa SonarQube Cloud al
+          # importar desde GitHub, que es la que ya usan los proyectos de antes.
+          #
+          # Las pruebas se declaran como pruebas. Si no, Sonar las cuenta como
+          # código sin probar —nadie prueba las pruebas— y la cobertura del
+          # código nuevo se hunde justo en el PR que más pruebas suma. El
+          # directorio de pruebas acá se llama `pruebas`, no `tests`.
+          #
+          # `build/` es el directorio de meson, el mismo que está en el
+          # `.gitignore`: el escáner no lee el `.gitignore`, así que hay que
+          # excluirlo aparte o contaría las pruebas como código.
+          #
+          # No hay `sonar.javascript.lcov.reportPaths` como en el compartido:
+          # acá no hay Bun ni cobertura que reportar.
+          args: >
+            -Dsonar.organization=vasakos
+            -Dsonar.projectKey=Vasak-OS_${{ github.event.repository.name }}
+            -Dsonar.exclusions=**/build/**,**/pruebas/**
+            -Dsonar.tests=.
+            -Dsonar.test.inclusions=**/pruebas/**
+            -Dsonar.test.exclusions=**/build/**
