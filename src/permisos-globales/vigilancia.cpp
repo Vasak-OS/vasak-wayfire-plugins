@@ -2,6 +2,8 @@
 
 #include <array>
 #include <cstdio>
+#include <format>
+#include <string_view>
 #include <unistd.h>
 
 namespace vasak
@@ -60,7 +62,7 @@ constexpr std::array<Entrada, 18> CONOCIDOS{{
     {"zwf_shell_manager_v2", Gravedad::GOBIERNA, "el protocolo privilegiado del escritorio"},
 }};
 
-const Entrada *buscar(const std::string& protocolo)
+const Entrada *buscar(std::string_view protocolo)
 {
     for (const auto& entrada : CONOCIDOS)
     {
@@ -192,14 +194,14 @@ constexpr auto PERMITIDOS = std::to_array<Permiso>({
  * `decidir` es una función libre a propósito, para poder probarla sin armar un
  * plugin.
  */
-std::set<std::string>& extra()
+std::set<std::string, std::less<>>& extra()
 {
-    static std::set<std::string> permitidos;
+    static std::set<std::string, std::less<>> permitidos;
     return permitidos;
 }
 } // namespace
 
-void fijar_permitidos_extra(const std::set<std::string>& binarios)
+void fijar_permitidos_extra(const std::set<std::string, std::less<>>& binarios)
 {
     extra() = binarios;
 }
@@ -216,7 +218,7 @@ Decision decidir(const std::string& binario, const std::string& protocolo)
 
     // La vía de escape, antes que la tabla: es la que alguien usa cuando algo
     // que esta lista no previó dejó de funcionar.
-    if (extra().count(binario) > 0)
+    if (extra().contains(binario))
     {
         return Decision::PERMITIR;
     }
@@ -261,13 +263,13 @@ std::string binario_de(pid_t pid)
     // `readlink` y no `realpath`: el destino puede no existir —un programa
     // borrado o actualizado mientras corría— y `realpath` devolvería nada,
     // justo en el caso en que más interesa saber qué era.
-    const std::string enlace = "/proc/" + std::to_string(pid) + "/exe";
+    const std::string enlace = std::format("/proc/{}/exe", pid);
     std::string destino(4096, '\0');
 
     const ssize_t largo = ::readlink(enlace.c_str(), destino.data(), destino.size() - 1);
     if (largo <= 0)
     {
-        return "pid " + std::to_string(pid) + " (no se pudo leer)";
+        return std::format("pid {} (no se pudo leer)", pid);
     }
 
     destino.resize(static_cast<std::size_t>(largo));
