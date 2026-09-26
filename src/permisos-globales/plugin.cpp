@@ -48,6 +48,7 @@
 #include <wayfire/plugin.hpp>
 #include <wayfire/util/log.hpp>
 
+#include <functional>
 #include <set>
 #include <string>
 
@@ -113,9 +114,9 @@ class permisos_globales_t : public wf::plugin_interface_t
      * Rutas absolutas separadas por comas. Es la vía para desbloquear algo que
      * la lista compilada no previó sin tener que recompilar el plugin.
      */
-    std::set<std::string> leer_permitidos_extra() const
+    std::set<std::string, std::less<>> leer_permitidos_extra() const
     {
-        std::set<std::string> binarios;
+        std::set<std::string, std::less<>> binarios;
         const std::string crudo = permitidos_extra;
 
         std::size_t desde = 0;
@@ -126,10 +127,16 @@ class permisos_globales_t : public wf::plugin_interface_t
 
             std::string ruta = crudo.substr(desde, hasta - desde);
             const std::size_t principio = ruta.find_first_not_of(" \t");
-            const std::size_t final = ruta.find_last_not_of(" \t");
+            // `ultimo` y no `final`: `final` es palabra reservada de contexto
+            // en C++. Como variable local compila —comprobado, con
+            // `-Wall -Wextra -Werror`—, así que no estaba rompiendo nada, pero
+            // es un identificador al que el lenguaje le sigue agregando
+            // significados y que se lee mal al lado de un `override`. Se
+            // llama como su par, `principio`.
+            const std::size_t ultimo = ruta.find_last_not_of(" \t");
             if (principio != std::string::npos)
             {
-                binarios.insert(ruta.substr(principio, final - principio + 1));
+                binarios.insert(ruta.substr(principio, ultimo - principio + 1));
             }
 
             if (coma == std::string::npos)

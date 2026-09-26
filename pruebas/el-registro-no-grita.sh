@@ -19,13 +19,20 @@ AQUI=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 FUENTE="$AQUI/../src/permisos-globales/plugin.cpp"
 
 fallos=0
-mal()  { echo "  FALLA: $*" >&2; fallos=$((fallos + 1)); }
-bien() { echo "  ok: $*"; }
+# `return 0` explícito en las dos, y a propósito: el estado que decide si la
+# prueba pasó es el `exit` del final, que mira `$fallos`, no el que devuelven
+# estas dos. Hoy las dos ya salen con 0 —en `mal` la última orden es una
+# asignación, que siempre tiene éxito— y escribirlo lo deja dicho en vez de
+# heredado. Devolver 1 desde `mal`, que sería lo «correcto» en apariencia,
+# rompería la prueba: se llama desde adentro de ramas cuya condición ya se
+# evaluó, y sin `set -e` ese 1 se comería la salida de la rama.
+mal()  { echo "  FALLA: $*" >&2; fallos=$((fallos + 1)); return 0; }
+bien() { echo "  ok: $*"; return 0; }
 
 # El cuerpo de `decidir`, que es lo que corre por cada par de cliente y global.
 cuerpo=$(sed -n '/bool decidir(const wl_client/,/^    }$/p' "$FUENTE")
 
-if [ -z "$cuerpo" ]; then
+if [[ -z "$cuerpo" ]]; then
     mal 'no se encontró el cuerpo de decidir(): esta prueba quedó mirando al vacío'
 else
     if printf '%s' "$cuerpo" | grep -qE '^[[:space:]]*LOGI\('; then
@@ -76,7 +83,7 @@ grep -q 'debug' "$FUENTE" \
     || mal 'nada le dice a nadie que el detalle está en debug'
 
 echo
-if [ "$fallos" -eq 0 ]; then
+if [[ "$fallos" -eq 0 ]]; then
     echo "Todo bien."
 else
     echo "$fallos comprobación(es) fallaron."

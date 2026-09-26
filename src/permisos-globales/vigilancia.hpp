@@ -5,6 +5,7 @@
 // gráfica. La otra mitad —`plugin.cpp`— es pegamento y no decide nada.
 #pragma once
 
+#include <functional>
 #include <set>
 #include <string>
 #include <sys/types.h>
@@ -87,7 +88,7 @@ Decision decidir(const std::string& binario, const std::string& protocolo);
  *
  * Se fija una vez al arrancar el plugin. Vacío es lo normal.
  */
-void fijar_permitidos_extra(const std::set<std::string>& binarios);
+void fijar_permitidos_extra(const std::set<std::string, std::less<>>& binarios);
 
 /**
  * Lo que ya se anotó, para no repetirlo.
