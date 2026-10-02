@@ -91,11 +91,11 @@ const char *para_que_sirve(const std::string& protocolo)
 namespace
 {
 /** Lo que un binario del escritorio tiene permitido pedir. */
-struct Permiso
+struct Permission
 {
-    const char *binario;
+    const char *binary;
     /** Terminada en `nullptr`. */
-    std::array<const char *, 5> protocolos;
+    std::array<const char *, 5> protocols;
 };
 
 /**
@@ -110,11 +110,11 @@ struct Permiso
  */
 /// El tamaño lo cuenta el compilador, y eso es a propósito.
 ///
-/// Estaba escrito a mano —`std::array<Permiso, 14>`— y sacar una fila sin
+/// Estaba escrito a mano —`std::array<Permission, 14>`— y sacar una fila sin
 /// corregir el número dejaba una entrada vacía al final, con la ruta en
 /// `nullptr`. Las pruebas no fallaban con un mensaje: se caían con SIGSEGV al
 /// recorrerla. Con `to_array` no hay número que mantener.
-constexpr auto PERMITIDOS = std::to_array<Permiso>({
+constexpr auto ALLOWED = std::to_array<Permission>({
     // El escritorio y lo que dibuja encima de todo.
     {"/usr/bin/vasak-desktop", {"zwlr_layer_shell_v1", nullptr}},
     {"/usr/bin/vasak-flare-daemon", {"zwlr_layer_shell_v1", nullptr}},
@@ -123,6 +123,12 @@ constexpr auto PERMITIDOS = std::to_array<Permiso>({
     // ventanas abiertas que va a listar se las pide a `vasak-desktop` por D-Bus
     // —que ya tiene `foreign_toplevel`— justamente para no pedirlo acá.
     {"/usr/bin/vasak-prism", {"zwlr_layer_shell_v1", nullptr}},
+    // El mini reproductor de Resonance: anclado abajo a la derecha y encima de
+    // las ventanas, que una ventana común no puede pedir. Sólo la capa: no
+    // toma el teclado en exclusiva, no enumera ventanas ni captura. Sin esta
+    // fila se abre como ventana común y Resonance la acomoda en la esquina por
+    // el IPC de Wayfire, que es el plan B (vasak-resonance#86).
+    {"/usr/bin/vasak-resonance", {"zwlr_layer_shell_v1", nullptr}},
     // La superficie de selección tapa todo, panel incluido, y desde que toma
     // los píxeles por su cuenta también captura: ver el bloque de `grim` más
     // abajo.
@@ -223,19 +229,19 @@ Decision decidir(const std::string& binario, const std::string& protocolo)
         return Decision::PERMITIR;
     }
 
-    for (const auto& permiso : PERMITIDOS)
+    for (const auto& entry : ALLOWED)
     {
-        if (binario != permiso.binario)
+        if (binario != entry.binary)
         {
             continue;
         }
-        for (const char *permitido : permiso.protocolos)
+        for (const char *allowed : entry.protocols)
         {
-            if (permitido == nullptr)
+            if (allowed == nullptr)
             {
                 break;
             }
-            if (protocolo == permitido)
+            if (protocolo == allowed)
             {
                 return Decision::PERMITIR;
             }

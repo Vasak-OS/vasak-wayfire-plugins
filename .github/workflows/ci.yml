@@ -106,6 +106,32 @@ jobs:
           # y para eso necesita el historial entero.
           fetch-depth: 0
 
+      # La cobertura de `vigilancia.cpp`, que es lo único que decide algo.
+      # Se compila aparte de `pruebas` con `--coverage` y sin optimizar, para
+      # que cada línea cuente donde está escrita. `gcov` se corre desde la raíz
+      # porque las rutas que guarda son las del compilador, relativas a ella;
+      # `-r` deja afuera los encabezados del sistema y `-p` conserva la ruta en
+      # el nombre del `.gcov`, que es lo que el importador usa para asignarlo.
+      #
+      # Sin esto la puerta de calidad daba 0 % de cobertura en todo PR: no
+      # porque faltaran pruebas, sino porque nadie le mandaba el informe.
+      - name: Cobertura
+        if: steps.token.outputs.hay == 'true'
+        run: |
+          mkdir -p cobertura/gcov
+          g++ -std=c++20 -O0 --coverage -I src/permisos-globales \
+            -c src/permisos-globales/vigilancia.cpp -o cobertura/vigilancia.o
+          g++ -std=c++20 -O0 -I src/permisos-globales \
+            -c pruebas/vigilancia.cpp -o cobertura/pruebas.o
+          g++ --coverage -o cobertura/pruebas-vigilancia \
+            cobertura/pruebas.o cobertura/vigilancia.o
+          ./cobertura/pruebas-vigilancia
+          gcov -r -p -o cobertura src/permisos-globales/vigilancia.cpp
+          mv ./*.gcov cobertura/gcov/
+          # Que haya informe y que sea del archivo que importa: un directorio
+          # vacío dejaría la cobertura en 0 % sin ningún error a la vista.
+          test -s 'cobertura/gcov/src#permisos-globales#vigilancia.cpp.gcov'
+
       - name: Análisis
         if: steps.token.outputs.hay == 'true'
         uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
@@ -141,17 +167,16 @@ jobs:
           # excluirlo aparte o contaría las pruebas como código.
           #
           # No hay `sonar.javascript.lcov.reportPaths` como en el compartido:
-          # acá no hay Bun ni cobertura que reportar. La cobertura de
-          # `vigilancia.cpp` sí se podría sacar con `--coverage` y
-          # `sonar.cfamily.gcov.reportsPath`; se verificó que el importador
-          # gcov funciona en AutoConfig, así que queda para otro PR y no para
-          # éste.
+          # acá no hay Bun. La cobertura llega por `sonar.cfamily.gcov.reportsPath`,
+          # con los `.gcov` del paso de arriba; `cobertura/` va en las
+          # exclusiones por lo mismo que `build/`.
           args: >
             -Dsonar.organization=vasakos
             -Dsonar.projectKey=Vasak-OS_${{ github.event.repository.name }}
             -Dsonar.sources=.
-            -Dsonar.exclusions=**/build/**,**/pruebas/**
+            -Dsonar.exclusions=**/build/**,**/pruebas/**,**/cobertura/**
             -Dsonar.tests=pruebas
+            -Dsonar.cfamily.gcov.reportsPath=cobertura/gcov
 
       # El escáner no crea ningún check ni ningún estado: sale en verde si
       # termina, haya mirado algo o no. Lo que se comprueba acá es lo único que
