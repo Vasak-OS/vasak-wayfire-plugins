@@ -140,6 +140,17 @@ int main()
         vasak::Decision::NEGAR, "el lanzador no enumera ventanas por su cuenta");
     comprobar(vasak::decidir("/usr/bin/vasak-prism", "zwlr_screencopy_manager_v1") ==
         vasak::Decision::NEGAR, "ni captura la pantalla");
+    // El mini reproductor: sin la capa se abre donde el compositor quiera
+    // (vasak-resonance#86). Y sólo la capa: un reproductor de música no tiene
+    // por qué ver las ventanas ni la pantalla, ni escribir por el teclado.
+    comprobar(vasak::decidir("/usr/bin/vasak-resonance", "zwlr_layer_shell_v1") ==
+        vasak::Decision::PERMITIR, "el mini reproductor puede anclarse como capa");
+    comprobar(vasak::decidir("/usr/bin/vasak-resonance", "zwlr_foreign_toplevel_manager_v1") ==
+        vasak::Decision::NEGAR, "el reproductor no enumera ventanas");
+    comprobar(vasak::decidir("/usr/bin/vasak-resonance", "zwlr_screencopy_manager_v1") ==
+        vasak::Decision::NEGAR, "ni captura la pantalla");
+    comprobar(vasak::decidir("/usr/bin/vasak-resonance", "zwp_virtual_keyboard_manager_v1") ==
+        vasak::Decision::NEGAR, "ni escribe por un teclado virtual");
     // El binario, no el paquete: `vasak-session-manager` publica tres, y el
     // que bloquea es éste. Escrito como prueba porque la lista decía el
     // nombre del gestor de sesión y el bloqueo no se tomaba —y sin bloqueo la
