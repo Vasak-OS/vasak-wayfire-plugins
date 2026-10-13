@@ -36,65 +36,46 @@ Wayfire Plugin
 ### Flujo de datos
 
 ```mermaid
-<!--
 graph TD
     A[Entrada: Teclado / Ratón / D-Bus / Sistema] --> B[Procesamiento: Core Rust + Tauri Commands]
     B --> C[Salida: UI actualizada / Acciones del sistema]
     style A fill:#e1f5fe
     style C fill:#e8f5e9
--->
 ```
 
 ### Componentes internos
 
 ```mermaid
-<!--
 flowchart LR
     subgraph App[Vasak wayfire plugins]
-        UI[Frontend Vue 3 + vue-libvasak]
-        Core[Core Rust: lógica principal]
-        IPC[Tauri Commands / Eventos]
-        System[Systemd / D-Bus / PipeWire / Wayland]
+        UI[(sin frontend — plugin nativo)]
+        Core[Plugin C/C++: lógica principal]
+        IPC[API nativa (Wayfire / WirePlumber)]
     end
     UI --> IPC
     IPC --> Core
     Core --> DBus[(D-Bus / zbus)]
-    Core --> System
+    Core --> System[Wayfire compositor / WirePlumber session]
     style UI fill:#f3e5f5
     style Core fill:#e3f2fd
     style DBus fill:#fff3e0
     style System fill:#fce4ec
--->
 ```
 
 ### Integración en el sistema VasakOS
 
 ```mermaid
-<!--
 C4Context
     title Vasak wayfire plugins en VasakOS
     Person(usuario, "Usuario", "Persona que usa el sistema")
     System_Boundary(c1, "VasakOS") {
-        System(app, "Vasak wayfire plugins", "Wayfire Plugin")
-        System_Ext(settings, "vasak-settings", "Configuración central")
-        System_Ext(keyring, "vasak-keyring", "Secrets y claves")
-        System_Ext(accounts, "vasak-accounts", "Cuentas e identidad")
-        System_Ext(permissions, "vasak-permissions", "Permisos y portales")
+        System(app, "Vasak wayfire plugins", "Plugin wayfire-plugins para compositor/media")
+        System_Ext(wayland, "Wayland / Wayfire", "Compositor")
     }
-    System_Ext(systemd, "systemd", "Gestión de servicios")
-    System_Ext(dbus, "D-Bus", "Bus de mensajes del sistema")
-    System_Ext(wayland, "Wayland / Wayfire", "Compositor")
-    System_Ext(pipewire, "PipeWire", "Multimedia")
+    System_Ext(pipewire, "PipeWire", "Servidor multimedia")
     Rel(usuario, app, "Usa")
-    Rel(app, settings, "Lee/escribe config")
-    Rel(app, keyring, "Guarda/lee secrets")
-    Rel(app, accounts, "Identidad de cuenta")
-    Rel(app, permissions, "Solicita permisos")
-    Rel(app, systemd, "Activación / sockets")
-    Rel(app, dbus, "Expone / consume interfaces")
-    Rel(app, wayland, "Superficies / protocolos")
-    Rel(app, pipewire, "Streams de audio/video")
--->
+    Rel(app, wayland, "Se carga como plugin Wayfire")
+    Rel(app, pipewire, "Se carga como módulo WirePlumber")
 ```
 
 ---
@@ -104,14 +85,7 @@ C4Context
 ### Arch Linux (repo oficial)
 
 ```bash
-pacman -S vasak-vasak-wayfire-plugins
-```
-
-### Debian / Ubuntu (.deb)
-
-```bash
-wget https://github.com/Vasak-OS/vasak-wayfire-plugins/releases/download/v{{VERSION}}/vasak-vasak-wayfire-plugins_{{VERSION}}_amd64.deb
-sudo apt install ./vasak-vasak-wayfire-plugins_{{VERSION}}_amd64.deb
+pacman -S vasak-wayfire-plugins
 ```
 
 ### Desde fuente
@@ -124,33 +98,24 @@ cd vasak-wayfire-plugins
 meson setup builddir
 meson compile -C builddir
 
-# Tests
-meson test -C builddir
-
 # Instalar
-meson install -C builddir
+sudo meson install -C builddir
 ```
-
-### Flatpak / AppImage
-
-> *Placeholder: añadir cuando exista paquete Flatpak o AppImage oficial.*
 
 ---
 
 ## Uso rápido
 
 ```bash
-# Se lanza automáticamente (systemd --user) o manualmente:
-vasak-wayfire-plugins
+# Se carga automáticamente por Wayfire / WirePlumber
+# Configuración en:
+# ~/.config/wayfire/ini  (Wayfire)
+# ~/.config/wireplumber/  (WirePlumber)
 ```
 
 ### Atajos / flags principales
 
-| Acción | Comando / Tecla |
-|--------|-----------------|
-| Acción principal | `vasak-wayfire-plugins` |
-| Configuración | `vasak-wayfire-plugins --config` |
-| Ayuda | `vasak-wayfire-plugins --help` |
+| Acción | Comando |\n|--------|---------|\n| Build | `meson compile -C builddir` |\n| Test | `meson test -C builddir` |\n| Install | `meson install -C builddir` |
 
 > **Captura:** `assets/demo.gif` *(placeholder — sustituir por GIF real)*
 
@@ -158,25 +123,21 @@ vasak-wayfire-plugins
 
 ## Configuración
 
-### Archivo de configuración
+### Configuración
 
-```
-~/.config/vasak/vasak-wayfire-plugins.toml
-```
+**Wayfire:** `~/.config/wayfire/ini` o `/etc/xdg/wayfire/ini`
+**WirePlumber:** `~/.config/wireplumber/main.lua.d/` o `/etc/wireplumber/main.lua.d/`
 
 ### Variables de entorno
 
 | Variable | Descripción | Por defecto |
 |----------|-------------|-------------|
-| `VASAK_DEBUG` | Activa logs de depuración en consola | `false` |
-| `VASAK_PROFILE` | Perfil de rendimiento: `balanced`, `performance`, `power-save` | `balanced` |
+| `MESON_DEBUG` | Activa logs de depuración de meson | `false` |
+| `VASAK_PROFILE` | Perfil de rendimiento: balanced, performance, power-save | `balanced` |
 
 ### Integración con `tauri-plugin-config-manager`
 
-- Esquemas de color: respeta `--ui-primary`, `--ui-surface`, `--ui-focus`, `--ui-on-surface`, `--ui-border`
-- Tema de iconos: usa el tema del sistema (`vasakos-icon-theme`) vía `vicon` lookup
-- Radio de bordes: variable CSS `--ui-radius` del esquema activo (por defecto 12px)
-- Fuentes: `--ui-font-family`, `--ui-font-size-base` desde el esquema
+(plugin nativo — sin integración config-manager)
 
 ---
 
@@ -207,55 +168,42 @@ vasak-wayfire-plugins
 
 `just` (command runner), `cargo-binstall` (opcional), `cargo-llvm-cov` (para cobertura)
 
-### Correr la app en desarrollo
+### Correr en desarrollo
 
 ```bash
-# Frontend (Vite dev server + Tauri dev)
-bun run tauri dev
+# Build incremental
+meson compile -C builddir
 
-# Solo frontend (Vite)
-bun run dev
-
-# Solo backend (cargo watch)
-cargo watch -x "run --bin vasak-wayfire-plugins"
+# Tests
+meson test -C builddir
 ```
 
 ### Compilar / Build de release
 
 ```bash
-# Build completo (frontend + backend + bundle)
-bun run tauri build
-
-# Solo frontend (para testear bundle después)
-bun run build
-
-# Solo backend Rust (binario optimizado)
-cargo build --release --locked
-
-# Paquetes nativos
-# Arch: makepkg -sf en PKGBUILDS/vasak-wayfire-plugins/
-# Debian: cargo deb --no-build --target-dir src-tauri/target/release/debian
+# Build release
+meson setup builddir --buildtype=release
+meson compile -C builddir
+meson install -C builddir
 ```
 
 ### Targets principales
 
 ```bash
-# Desarrollo (Tauri dev server + hot reload)
-bun run dev
+# Desarrollo
+meson compile -C builddir
 
 # Build producción
-bun run build
+meson setup builddir --buildtype=release && meson compile -C builddir
 
 # Solo frontend
-bun run build:frontend
+(no aplica — C/C++)
 
 # Solo backend Rust
-cargo build --release --locked
+(no aplica — C/C++)
 
 # Lint + tipos (pre-commit / CI)
-bunx --bun biome check .
-bunx vue-tsc --noEmit
-cargo fmt --check
+clang-format --dry-run --Werror src/
 ```
 
 ### Pruebas
@@ -264,7 +212,7 @@ cargo fmt --check
 # Tests con meson
 meson test -C builddir
 
-# Scripts de prueba adicionales
+# Scripts adicionales
 ./pruebas/run-all.sh
 ```
 
@@ -286,7 +234,7 @@ Tipos habituales: `feat`, `fix`, `bugfix`, `docs`, `ci`, `chore`, `security`, `r
 
 1. Rama desde `origin/main`:
    ```bash
-   git worktree add -b feat/tema ~/wt/vasak-wayfire-plugins-tema origin/main
+   git worktree add -b feat/{{TEMA}} ~/wt/vasak-wayfire-plugins-{{TEMA}} origin/main
    ```
 2. Prefijos de rama: `fix/`, `feat/`, `bugfix/`, `docs/`, `ci/`, `chore/`, `security/`
 3. Escribe el fix → **`qa` escribe las pruebas** (fallan sin el fix) → suite verde → abre PR
@@ -302,13 +250,11 @@ Tipos habituales: `feat`, `fix`, `bugfix`, `docs`, `ci`, `chore`, `security`, `r
 
 ### Crates / módulos principales
 
-| Módulo | Responsabilidad |
-|--------|-----------------|
-| `vasak-wayfire-plugins` | Plugin C/C++ para Wayfire / WirePlumber |
+| Módulo | Responsabilidad |\n|--------|-----------------|\n| `vasak-wayfire-plugins` | Plugin C/C++ para Wayfire / WirePlumber |
 
 ### Interfaces D-Bus / zbus expuestas
 
-
+(no aplica — plugin nativo sin D-Bus directo)
 
 ### Puntos de extensión
 
@@ -318,12 +264,9 @@ Tipos habituales: `feat`, `fix`, `bugfix`, `docs`, `ci`, `chore`, `security`, `r
 
 ### Features / Cargo features
 
-| Opción meson | Descripción | Default |
-|--------------|-------------|---------|
-| `tests` | Compilar y correr pruebas | true |
-| `docs` | Generar documentación Doxygen | false |
+| Opción meson | Descripción | Default |\n|--------------|-------------|---------|\n| `tests` | Compilar y correr pruebas | true |\n| `docs` | Generar documentación Doxygen | false |
 
-Y para apps Tauri+Vue: features del `tauri.conf.json` → `bundle` / `plugins` / `allowlist` (capabilities).
+
 
 ---
 
@@ -338,9 +281,9 @@ Y para apps Tauri+Vue: features del `tauri.conf.json` → `bundle` / `plugins` /
 
 ## Contribuir
 
-- **Guía:** [.github/CONTRIBUTING.md](https://github.com/Vasak-OS/.github/blob/main/CONTRIBUTING.md)
-- **Plantillas de issue:** [.github/ISSUE_TEMPLATE/](https://github.com/Vasak-OS/.github/tree/main/ISSUE_TEMPLATE)
-- **Código de conducta:** [CODE_OF_CONDUCT.md](https://github.com/Vasak-OS/.github/blob/main/CODE_OF_CONDUCT.md)
+- **Guía:** [`.github/CONTRIBUTING.md`](https://github.com/Vasak-OS/.github/blob/main/CONTRIBUTING.md)
+- **Plantillas de issue:** [`.github/ISSUE_TEMPLATE/`](https://github.com/Vasak-OS/.github/tree/main/ISSUE_TEMPLATE)
+- **Código de conducta:** [`CODE_OF_CONDUCT.md`](https://github.com/Vasak-OS/.github/blob/main/CODE_OF_CONDUCT.md)
 
 ---
 
@@ -349,7 +292,7 @@ Y para apps Tauri+Vue: features del `tauri.conf.json` → `bundle` / `plugins` /
 > **Actualizado automáticamente en CI** — muestra los avatares de quienes han aportado código a este repo.
 
 <div align="center">
-  
+  <a href="https://github.com/JoaquinDecima" target="_blank"><img src="https://avatars.githubusercontent.com/u/11674229?v=4&s=40" width="40" height="40" alt="JoaquinDecima" style="border-radius: 50%; margin: 2px;" title="JoaquinDecima (30 contribuciones)"></a>
 </div>
 
 [Ver todos los contribuidores](https://github.com/Vasak-OS/vasak-wayfire-plugins/graphs/contributors)
