@@ -1,121 +1,373 @@
-# vasak-wayfire-plugins
+# Vasak wayfire plugins
 
-Plugins de Wayfire de VasakOS.
+Wayfire Plugin
 
-## `permisos-globales`
+---
 
-Los protocolos de Wayland que **ven o gobiernan la sesión** van sólo a los programas del escritorio que los necesitan. Al resto no se le ofrecen, así que no los puede pedir.
+## Tecnología
 
-### Por qué
+[![C++](https://img.shields.io/badge/C++-20-00599c?style=flat&logo=c%2B%2B)](https://isocpp.org/) [![Meson](https://img.shields.io/badge/Meson-1.5%2B-42b883?style=flat&logo=meson)](https://mesonbuild.com/) [![Wayfire](https://img.shields.io/badge/Wayfire-0.8%2B-24283b?style=flat&logo=wayland)](https://wayfire.org/) [![Wayland](https://img.shields.io/badge/Wayland-1.22%2B-42b883?style=flat&logo=wayland)](https://wayland.freedesktop.org/)
 
-La captura de pantalla por el portal ya pregunta. La directa no: cualquier cliente de Wayland puede pedirle los protocolos privilegiados al compositor, y el compositor se los da. Medido en una sesión real, un proceso sin ningún privilegio sacó una captura de 313 899 bytes con `grim` y leyó 84 822 bytes del portapapeles. Mientras eso siga así, la pregunta del portal es una formalidad que se saltea quien quiere.
+## Estado
 
-Lo que está expuesto es más que la captura:
+[![CI](https://github.com/Vasak-OS/vasak-wayfire-plugins/actions/workflows/ci.yml/badge.svg)](https://github.com/Vasak-OS/vasak-wayfire-plugins/actions/workflows/ci.yml)
+[![Versión](https://img.shields.io/github/v/release/Vasak-OS/vasak-wayfire-plugins?style=flat&label=Versi%C3%B3n)](https://github.com/Vasak-OS/vasak-wayfire-plugins/releases)
+[![Licencia](https://img.shields.io/github/license/Vasak-OS/vasak-wayfire-plugins?style=flat)](LICENSE)
+[![Cobertura](https://sonarcloud.io/api/project_badges/measure?project=Vasak-OS_vasak-wayfire-plugins&metric=coverage&style=flat)](https://sonarcloud.io/summary/new_code?id=Vasak-OS_vasak-wayfire-plugins)
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=Vasak-OS_vasak-wayfire-plugins&metric=alert_status&style=flat)](https://sonarcloud.io/summary/new_code?id=Vasak-OS_vasak-wayfire-plugins)
+[![Tamaño repo](https://img.shields.io/github/repo-size/Vasak-OS/vasak-wayfire-plugins?style=flat)](https://github.com/Vasak-OS/vasak-wayfire-plugins)
 
-| protocolo | para qué sirve |
-|---|---|
-| `zwlr_screencopy_manager_v1` | capturar la pantalla |
-| `ext_image_copy_capture_manager_v1` | ídem, el reemplazo estándar |
-| `ext_output_image_capture_source_manager_v1` | elegir qué pantalla capturar |
-| `zwlr_export_dmabuf_manager_v1` | exportar el framebuffer |
-| `zwlr_data_control_manager_v1` | leer el portapapeles, continuo y sin foco |
-| `ext_data_control_manager_v1` | ídem, el reemplazo estándar |
-| `zwlr_foreign_toplevel_manager_v1` | enumerar ventanas y títulos |
-| `ext_foreign_toplevel_list_v1` | ídem, el reemplazo estándar |
-| `zwp_virtual_keyboard_manager_v1` | escribir teclas en cualquier ventana |
-| `zwlr_virtual_pointer_manager_v1` | mover el puntero y hacer clic |
-| `zwp_keyboard_shortcuts_inhibit_manager_v1` | quedarse con los atajos del escritorio |
-| `zwp_primary_selection_device_manager_v1` | leer la selección del medio |
+---
 
-Y aparte, los que no leen nada pero deciden qué se ve: `ext_session_lock_manager_v1`, `zwlr_layer_shell_v1`, `zwlr_output_manager_v1`, `zwlr_output_power_manager_v1`, `zwlr_gamma_control_manager_v1`, `zwf_shell_manager_v2`.
+## Descripción
 
-La lista se comprobó enumerando los globals de una sesión de verdad con `wayland-info`, y cubre entera la de `privileged_protocols` que `vasak-desktop-settings` configura para `security-context-v1`. Son dos listas de lo mismo en dos repositorios, o sea dos que se pueden separar: si acá faltara uno que allá se oculta, la semana de medición no vería quién lo pide y la lista de permitidos se decidiría sin ese dato. Hay una prueba que avisa si esta lista se achica.
+Wayfire Plugin
 
-### De dónde sale la lista
+**Para el usuario:** Wayfire Plugin
 
-De **lo que el escritorio necesita**, leído en el código de cada componente. No de medir quién lo pide.
+**Integración VasakOS:** Integra con el ecosistema VasakOS vía D-Bus y configuración compartida.
 
-El plan era medir una semana y decidir con esos datos. Queda escrito por qué no sirve, para que nadie lo reintente: el filtro corre cuando el compositor **ofrece** el protocolo, no cuando el cliente lo usa. La cabecera de Wayfire lo dice textual —«select which globals are *advertised* to clients»— y todo cliente de Wayland enumera el registro entero al arrancar. Medido en una sesión real, `grim` figuraba pidiendo 17 de los 18 protocolos vigilados, incluidos la pantalla de bloqueo, el teclado virtual y el control de gamma, que no usa. Una semana de eso da «todos los programas, todos los protocolos», que no decide nada. No hay enganche en el *bind* en esa API.
+---
 
-| programa | qué le damos | por qué |
-|---|---|---|
-| `vasak-desktop` | `layer_shell` | el panel y el escritorio se dibujan encima |
-| `vasak-flare-daemon` | `layer_shell` | los carteles |
-| `vasak-shot` | `layer_shell`, captura | la superficie de selección tapa todo, y los píxeles los toma él |
-| `slurp` | `layer_shell` | la superficie de selección tapa todo |
-| `vasak-session-manager`, `gtklock` | `session_lock` | la pantalla de bloqueo |
-| `vasak-press-and-hold` | `layer_shell`, `virtual_keyboard` | el selector se dibuja encima y escribe el carácter |
-| `xdg-desktop-portal-wlr` | captura (los cuatro) | el camino con pregunta de por medio |
-| `wl-copy`, `wl-paste` | `data_control`, selección primaria | copiar y pegar |
-| `wlsunset` | `gamma_control` | luz nocturna |
-| `wlopm` | `output_power` | apagar la pantalla |
-| `wlr-randr` | `output_manager` | configurar monitores |
+## Arquitectura (diagramas)
 
-**Acota, no habilita.** Estar en la lista no le da nada a nadie: le deja pedir lo que ya sabíamos que usa. Por eso cada fila nombra sus protocolos y no «todos».
+> Copia y pega la plantilla que necesites, descomenta y adapta.
 
-**Y la lista es por ejecutable, que es su límite.** `grim` estuvo acá mientras `vasak-shot` lo llamaba para tomar los píxeles, y eso lo convertía en el intermediario de cualquiera: un guion de dos líneas —`grim "$1"`— capturaba la pantalla entera sin estar permitido. Medido en una sesión de verdad. Ahora `vasak-shot` habla el protocolo por su cuenta y `grim` salió de la lista, así que capturar a mano desde una terminal dejó de andar: es el precio de que el permiso signifique algo. Para el equipo de alguien que lo necesite está `permitidos_extra`.
+### Flujo de datos
 
-El mismo razonamiento vale para las demás filas: cada programa de la lista que alguien más pueda ejecutar es un intermediario posible para lo que esa fila le concede.
-
-**Lo que no le damos a nadie**: enumerar ventanas y títulos (`foreign_toplevel`, ambos), puntero virtual, inhibir atajos y `zwf_shell`. Ningún componente del escritorio los usa — el panel lista ventanas por el socket IPC de Wayfire, y `vasak-monitor` las cuenta con `ss -x`.
-
-### Si esto rompe algo
-
-`solo_anotar = true` en `wayfire.ini` y el escritorio vuelve a como estaba, sin reiniciar la sesión: Wayfire relee su configuración sola. El registro dice qué se negó y a quién, que es con lo que se arregla la lista.
-
-Para permitir algo puntual sin tocar el código:
-
-```ini
-[permisos-globales]
-permitidos_extra = /usr/bin/obs
+```mermaid
+<!--
+graph TD
+    A[Entrada: Teclado / Ratón / D-Bus / Sistema] --> B[Procesamiento: Core Rust + Tauri Commands]
+    B --> C[Salida: UI actualizada / Acciones del sistema]
+    style A fill:#e1f5fe
+    style C fill:#e8f5e9
+-->
 ```
 
-Un programa de terceros que quiera la pantalla tiene además el portal, que pregunta. Sin alguna de esas dos salidas esto sería `security-context-v1` otra vez: bloquear sin poder desbloquear.
+### Componentes internos
 
-### Por qué no `security-context-v1`
-
-Wayfire lo trae y VasakOS ya lo tiene activado. No alcanza, y el motivo es la regla del escritorio: **todo lo que se bloquea se tiene que poder desbloquear**.
-
-`security-context-v1` es binario y global. Un cliente entra por un socket «en caja» o por el normal, y eso se decide **al arrancarlo**. No hay forma de devolverle la captura a una aplicación después de negársela sin relanzarla con otro entorno — o sea, bloquearía sin poder desbloquear.
-
-El filtro de globals, en cambio, decide **por cliente y en el momento**: se saca el pid del `wl_client`, y de ahí el binario, que es exactamente lo que el servicio de permisos ya hace para identificar a quien llama. Una decisión revocada vuelve a aplicar sin relanzar nada.
-
-### Por qué no `wl_display_set_global_filter`
-
-Es la función que la documentación de Wayland nombra, y es la que **no** hay que usar acá. Wayfire ya la llama para implementar `security-context-v1`, y no encadena: el segundo que la llama reemplaza al primero. Usarla desde un plugin desactivaría en silencio el filtrado que `vasak-desktop-settings` configura hoy en `wayfire.ini`.
-
-Wayfire 0.11 expone la forma correcta: `wf::compositor_core_t::create_global_filter()`. La documentación del encabezado lo dice explícitamente — con varios filtros, un global se ofrece a un cliente **si todos devuelven `true`**.
-
-### Qué escribe
-
-Una línea por cada combinación nueva de programa y protocolo **negada**, en el registro de Wayfire:
-
-```
-II ... - [permisos-globales] negado a /usr/bin/cualquiera: zwlr_screencopy_manager_v1 (capturar la pantalla)
+```mermaid
+<!--
+flowchart LR
+    subgraph App[Vasak wayfire plugins]
+        UI[Frontend Vue 3 + vue-libvasak]
+        Core[Core Rust: lógica principal]
+        IPC[Tauri Commands / Eventos]
+        System[Systemd / D-Bus / PipeWire / Wayland]
+    end
+    UI --> IPC
+    IPC --> Core
+    Core --> DBus[(D-Bus / zbus)]
+    Core --> System
+    style UI fill:#f3e5f5
+    style Core fill:#e3f2fd
+    style DBus fill:#fff3e0
+    style System fill:#fce4ec
+-->
 ```
 
-Sólo lo negado, y una sola vez por par. Lo permitido es lo normal, y anotarlo taparía esto —que es lo que alguien busca cuando algo dejó de funcionar—. El filtro se llama por cada global y por cada cliente que enumera el registro, decenas de veces por programa que arranca.
+### Integración en el sistema VasakOS
 
-Para leerlo:
+```mermaid
+<!--
+C4Context
+    title Vasak wayfire plugins en VasakOS
+    Person(usuario, "Usuario", "Persona que usa el sistema")
+    System_Boundary(c1, "VasakOS") {
+        System(app, "Vasak wayfire plugins", "Wayfire Plugin")
+        System_Ext(settings, "vasak-settings", "Configuración central")
+        System_Ext(keyring, "vasak-keyring", "Secrets y claves")
+        System_Ext(accounts, "vasak-accounts", "Cuentas e identidad")
+        System_Ext(permissions, "vasak-permissions", "Permisos y portales")
+    }
+    System_Ext(systemd, "systemd", "Gestión de servicios")
+    System_Ext(dbus, "D-Bus", "Bus de mensajes del sistema")
+    System_Ext(wayland, "Wayland / Wayfire", "Compositor")
+    System_Ext(pipewire, "PipeWire", "Multimedia")
+    Rel(usuario, app, "Usa")
+    Rel(app, settings, "Lee/escribe config")
+    Rel(app, keyring, "Guarda/lee secrets")
+    Rel(app, accounts, "Identidad de cuenta")
+    Rel(app, permissions, "Solicita permisos")
+    Rel(app, systemd, "Activación / sockets")
+    Rel(app, dbus, "Expone / consume interfaces")
+    Rel(app, wayland, "Superficies / protocolos")
+    Rel(app, pipewire, "Streams de audio/video")
+-->
+```
+
+---
+
+## Instalación
+
+### Arch Linux (repo oficial)
 
 ```bash
-journalctl --user -b | grep permisos-globales
+pacman -S vasak-vasak-wayfire-plugins
 ```
 
-### Activarlo
-
-En `~/.config/wayfire.ini`, agregar `permisos-globales` a la lista de `plugins`.
-
-## Compilar
+### Debian / Ubuntu (.deb)
 
 ```bash
-meson setup build
-ninja -C build
-meson test -C build
+wget https://github.com/Vasak-OS/vasak-wayfire-plugins/releases/download/v{{VERSION}}/vasak-vasak-wayfire-plugins_{{VERSION}}_amd64.deb
+sudo apt install ./vasak-vasak-wayfire-plugins_{{VERSION}}_amd64.deb
 ```
 
-Las pruebas no necesitan un compositor: la lógica que se puede decidir sin Wayland vive aparte, en `vigilancia.cpp`, y el enganche con Wayfire no decide nada.
+### Desde fuente
+
+```bash
+git clone https://github.com/Vasak-OS/vasak-wayfire-plugins.git
+cd vasak-wayfire-plugins
+
+# Build con meson
+meson setup builddir
+meson compile -C builddir
+
+# Tests
+meson test -C builddir
+
+# Instalar
+meson install -C builddir
+```
+
+### Flatpak / AppImage
+
+> *Placeholder: añadir cuando exista paquete Flatpak o AppImage oficial.*
+
+---
+
+## Uso rápido
+
+```bash
+# Se lanza automáticamente (systemd --user) o manualmente:
+vasak-wayfire-plugins
+```
+
+### Atajos / flags principales
+
+| Acción | Comando / Tecla |
+|--------|-----------------|
+| Acción principal | `vasak-wayfire-plugins` |
+| Configuración | `vasak-wayfire-plugins --config` |
+| Ayuda | `vasak-wayfire-plugins --help` |
+
+> **Captura:** `assets/demo.gif` *(placeholder — sustituir por GIF real)*
+
+---
+
+## Configuración
+
+### Archivo de configuración
+
+```
+~/.config/vasak/vasak-wayfire-plugins.toml
+```
+
+### Variables de entorno
+
+| Variable | Descripción | Por defecto |
+|----------|-------------|-------------|
+| `VASAK_DEBUG` | Activa logs de depuración en consola | `false` |
+| `VASAK_PROFILE` | Perfil de rendimiento: `balanced`, `performance`, `power-save` | `balanced` |
+
+### Integración con `tauri-plugin-config-manager`
+
+- Esquemas de color: respeta `--ui-primary`, `--ui-surface`, `--ui-focus`, `--ui-on-surface`, `--ui-border`
+- Tema de iconos: usa el tema del sistema (`vasakos-icon-theme`) vía `vicon` lookup
+- Radio de bordes: variable CSS `--ui-radius` del esquema activo (por defecto 12px)
+- Fuentes: `--ui-font-family`, `--ui-font-size-base` desde el esquema
+
+---
+
+## Desarrollo
+
+### Requisitos
+
+- **Rust:** `rustup` toolchain estable (`rust-toolchain.toml` fija la versión)
+- **Node / bun:** `bun` ≥ 1.1 (nunca npm/yarn/pnpm para apps Tauri)
+- **Sistema:** `pkg-config`, `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libssl-dev`
+- *`meson`, `ninja`, `clang`, `wayfire-dev` / `wireplumber-dev`*
+
+### Dependencias de desarrollo
+
+#### Sistema (paquetes Arch / Debian / Fedora)
+
+`base-devel`, `pkgconf`, `libssl-dev`, `libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `gstreamer1.0-plugins-base`, `gstreamer1.0-plugins-good`, `libpipewire-0.3-dev`, `libwireplumber-0.5-dev`, `libdbus-1-dev`, `libudev-dev`, `libxkbcommon-dev`, `libwayland-dev`, `meson`, `ninja`, `clang`, `lld`
+
+#### Rust
+
+`rustup` → `stable` + `rustfmt` + `clippy`
+
+#### Node
+
+**Solo `bun`** (nunca npm/yarn/pnpm para apps Tauri). `bun --version` ≥ 1.1
+
+#### Herramientas CLI
+
+`just` (command runner), `cargo-binstall` (opcional), `cargo-llvm-cov` (para cobertura)
+
+### Correr la app en desarrollo
+
+```bash
+# Frontend (Vite dev server + Tauri dev)
+bun run tauri dev
+
+# Solo frontend (Vite)
+bun run dev
+
+# Solo backend (cargo watch)
+cargo watch -x "run --bin vasak-wayfire-plugins"
+```
+
+### Compilar / Build de release
+
+```bash
+# Build completo (frontend + backend + bundle)
+bun run tauri build
+
+# Solo frontend (para testear bundle después)
+bun run build
+
+# Solo backend Rust (binario optimizado)
+cargo build --release --locked
+
+# Paquetes nativos
+# Arch: makepkg -sf en PKGBUILDS/vasak-wayfire-plugins/
+# Debian: cargo deb --no-build --target-dir src-tauri/target/release/debian
+```
+
+### Targets principales
+
+```bash
+# Desarrollo (Tauri dev server + hot reload)
+bun run dev
+
+# Build producción
+bun run build
+
+# Solo frontend
+bun run build:frontend
+
+# Solo backend Rust
+cargo build --release --locked
+
+# Lint + tipos (pre-commit / CI)
+bunx --bun biome check .
+bunx vue-tsc --noEmit
+cargo fmt --check
+```
+
+### Pruebas
+
+```bash
+# Tests con meson
+meson test -C builddir
+
+# Scripts de prueba adicionales
+./pruebas/run-all.sh
+```
+
+### Convención de commits
+
+[Conventional Commits](https://www.conventionalcommits.org/es/v1.0.0/):
+
+```
+<tipo>(<ámbito>): <descripción corta>
+
+[cuerpo opcional]
+
+[pie opcional: Closes #N]
+```
+
+Tipos habituales: `feat`, `fix`, `bugfix`, `docs`, `ci`, `chore`, `security`, `refactor`, `perf`, `test`.
+
+### Cómo abrir PR
+
+1. Rama desde `origin/main`:
+   ```bash
+   git worktree add -b feat/tema ~/wt/vasak-wayfire-plugins-tema origin/main
+   ```
+2. Prefijos de rama: `fix/`, `feat/`, `bugfix/`, `docs/`, `ci/`, `chore/`, `security/`
+3. Escribe el fix → **`qa` escribe las pruebas** (fallan sin el fix) → suite verde → abre PR
+4. Al abrir PR, **cuatro cosas obligatorias**:
+   - Asignado a `JoaquinDecima`
+   - Etiqueta `enhancement` o `bug` (+ `ci` / `dependencies` si aplica)
+   - Añadido al proyecto «VasakOS Roadmap»
+   - Status **In Progress**
+
+---
+
+## Arquitectura (texto)
+
+### Crates / módulos principales
+
+| Módulo | Responsabilidad |
+|--------|-----------------|
+| `vasak-wayfire-plugins` | Plugin C/C++ para Wayfire / WirePlumber |
+
+### Interfaces D-Bus / zbus expuestas
+
+
+
+### Puntos de extensión
+
+- **Plugins:** Sistema de plugins modular
+- **Hooks:** Hooks de ciclo de vida
+- **API pública Rust:** API pública del crate principal
+
+### Features / Cargo features
+
+| Opción meson | Descripción | Default |
+|--------------|-------------|---------|
+| `tests` | Compilar y correr pruebas | true |
+| `docs` | Generar documentación Doxygen | false |
+
+Y para apps Tauri+Vue: features del `tauri.conf.json` → `bundle` / `plugins` / `allowlist` (capabilities).
+
+---
+
+## Pruebas y calidad
+
+- **Cobertura objetivo:** ≥ 80 % del código nuevo (SonarCloud Quality Gate)
+- **Informes:** GitHub Actions → pestaña *SonarCloud Code Analysis* → enlace a SonarCloud
+- **Añadir pruebas:** ver `AGENTS.md` sección 9 (mapa de repos y comandos de prueba)
+- **Regla:** toda corrección lleva prueba escrita por `qa` que falla sin el fix
+
+---
+
+## Contribuir
+
+- **Guía:** [.github/CONTRIBUTING.md](https://github.com/Vasak-OS/.github/blob/main/CONTRIBUTING.md)
+- **Plantillas de issue:** [.github/ISSUE_TEMPLATE/](https://github.com/Vasak-OS/.github/tree/main/ISSUE_TEMPLATE)
+- **Código de conducta:** [CODE_OF_CONDUCT.md](https://github.com/Vasak-OS/.github/blob/main/CODE_OF_CONDUCT.md)
+
+---
+
+## Contribuidores
+
+> **Actualizado automáticamente en CI** — muestra los avatares de quienes han aportado código a este repo.
+
+<div align="center">
+  
+</div>
+
+[Ver todos los contribuidores](https://github.com/Vasak-OS/vasak-wayfire-plugins/graphs/contributors)
+
+---
+
+## Donadores / Sponsors
+
+[![Sponsors](https://img.shields.io/github/sponsors/Vasak-OS?style=flat&label=Sponsors)](https://github.com/sponsors/Vasak-OS)
+
+> **Backers:** *Actualizado automáticamente en CI desde GitHub Sponsors / OpenCollective / Polar.*
+
+[💖 Donar al proyecto](https://github.com/sponsors/Vasak-OS)
+
+---
 
 ## Licencia
 
-GPL-3.0-or-later.
+`GPL-3.0` — Copyright © 2026 **Vasak-OS Contributors**
+
+[Ver licencia completa](LICENSE)
