@@ -116,7 +116,13 @@ struct Permission
 /// recorrerla. Con `to_array` no hay número que mantener.
 constexpr auto ALLOWED = std::to_array<Permission>({
     // El escritorio y lo que dibuja encima de todo.
-    {"/usr/bin/vasak-desktop", {"zwlr_layer_shell_v1", nullptr}},
+    // Y, desde el historial del portapapeles (vasak-desktop#217), `ext-data-control`
+    // para leer la selección en segundo plano: eso es el historial, con su exclusión
+    // de secretos y sólo en memoria. Es el permiso de «espía» más fuerte de la lista
+    // —el escritorio ve cada cosa que se copia—, y se justifica por ser esa función,
+    // de un binario del sistema. Sólo el `ext_` estándar, que es el que el vigía
+    // liga; el `zwlr_` viejo no.
+    {"/usr/bin/vasak-desktop", {"zwlr_layer_shell_v1", "ext_data_control_manager_v1", nullptr}},
     {"/usr/bin/vasak-flare-daemon", {"zwlr_layer_shell_v1", nullptr}},
     // El lanzador: centrado, encima de todo y con el teclado en exclusiva, que
     // son las tres cosas que una ventana común no puede pedir. Sólo esto: las

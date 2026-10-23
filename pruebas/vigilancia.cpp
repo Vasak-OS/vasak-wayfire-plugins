@@ -179,6 +179,15 @@ int main()
 
     comprobar(vasak::decidir("/usr/bin/wl-copy", "zwlr_data_control_manager_v1") ==
         vasak::Decision::PERMITIR, "el portapapeles se puede copiar");
+    // El historial del portapapeles (vasak-desktop#217): el escritorio lee la
+    // selección en segundo plano. Es el permiso de «espía» más fuerte que se da, y
+    // va porque esa es justamente su función —con exclusión de secretos y sólo en
+    // memoria, del lado de vasak-desktop—. Sólo el `ext_` estándar, que es el que
+    // su vigía liga.
+    comprobar(vasak::decidir("/usr/bin/vasak-desktop", "ext_data_control_manager_v1") ==
+        vasak::Decision::PERMITIR, "el escritorio lee el portapapeles para el historial");
+    comprobar(vasak::decidir("/usr/bin/vasak-desktop", "zwlr_data_control_manager_v1") ==
+        vasak::Decision::NEGAR, "pero sólo por el protocolo estándar, no el viejo");
     comprobar(vasak::decidir("/usr/bin/wlsunset", "zwlr_gamma_control_manager_v1") ==
         vasak::Decision::PERMITIR, "la luz nocturna puede cambiar el gamma");
 
